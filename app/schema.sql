@@ -15,8 +15,11 @@ CREATE TABLE IF NOT EXISTS floorplans (
     -- transform placing this layer's image onto the site plan canvas,
     -- expressed in site-plan-normalized units (0..1 span of the site plan's
     -- longer edge) so it stays meaningful regardless of image resolution.
-    offset_x        REAL NOT NULL DEFAULT 0,
-    offset_y         REAL NOT NULL DEFAULT 0,
+    -- default to centered-on-site-plan so a freshly uploaded layer starts
+    -- inside the visible canvas instead of corner-anchored and potentially
+    -- spilling far outside it (see layer edit mode for repositioning)
+    offset_x        REAL NOT NULL DEFAULT 0.5,
+    offset_y        REAL NOT NULL DEFAULT 0.5,
     scale           REAL NOT NULL DEFAULT 1.0,
     rotation_deg    REAL NOT NULL DEFAULT 0.0,
     created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
