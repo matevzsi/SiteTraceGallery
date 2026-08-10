@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# runtime data — user's actual project content, not source
+sitetrace.db
+sitetrace.db-journal
+floorplans/*
+photos/*
+thumbnails/*
+!floorplans/.gitkeep
+!photos/.gitkeep
+!thumbnails/.gitkeep
