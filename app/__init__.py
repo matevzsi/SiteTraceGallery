@@ -8,7 +8,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def create_app(test_config: dict | None = None) -> Flask:
-    app = Flask(__name__, instance_relative_config=False)
+    app = Flask(
+        __name__,
+        instance_relative_config=False,
+        template_folder=str(PROJECT_ROOT / "templates"),
+        static_folder=str(PROJECT_ROOT / "static"),
+    )
 
     app.config.from_mapping(
         SECRET_KEY="dev",  # single-user localhost tool — not security sensitive

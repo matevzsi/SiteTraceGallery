@@ -8,6 +8,20 @@ from .helpers import error, row_to_dict, rows_to_list
 bp = Blueprint("pins", __name__, url_prefix="/api")
 
 
+@bp.get("/pins")
+def list_all_pins():
+    db = get_db()
+    rows = db.execute(
+        """
+        SELECT p.*, f.name AS floorplan_name, f.is_site_plan AS floorplan_is_site_plan
+        FROM pins p
+        JOIN floorplans f ON f.id = p.floorplan_id
+        ORDER BY f.is_site_plan DESC, f.created_at ASC, p.created_at ASC
+        """
+    ).fetchall()
+    return {"pins": rows_to_list(rows)}
+
+
 @bp.get("/floorplans/<int:floorplan_id>/pins")
 def list_pins(floorplan_id):
     db = get_db()

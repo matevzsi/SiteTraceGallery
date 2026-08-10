@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SiteTrace</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <h1>SiteTrace</h1>
+    <nav>
+      <button id="navHomeBtn" class="nav-btn active" type="button">Floor plan</button>
+      <button id="navUnassignedBtn" class="nav-btn" type="button">Unassigned <span id="unassignedCount" class="badge">0</span></button>
+      <button id="importBtn" class="nav-btn" type="button">Import photos…</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="view-home" class="view">
+      <div class="toolbar">
+        <label class="toolbar-item">Floor plan
+          <select id="floorplanSelect"></select>
+        </label>
+        <button id="addFloorplanBtn" type="button">+ Add floor plan</button>
+        <button id="layerEditBtn" type="button" disabled>Layer edit mode</button>
+        <div id="layerEditControls" class="layer-edit-controls hidden">
+          <label>Opacity <input type="range" id="layerOpacity" min="0.1" max="1" step="0.05" value="0.75"></label>
+          <label>Scale <input type="range" id="layerScale" min="0.1" max="3" step="0.01"></label>
+          <label>Rotation <input type="range" id="layerRotation" min="-180" max="180" step="0.5"></label>
+          <button id="layerEditDoneBtn" type="button">Done</button>
+        </div>
+        <div id="assignModeBanner" class="assign-banner hidden">
+          Click a pin to assign <span id="assignModeCount"></span> photo(s)
+          <button id="assignModeCancelBtn" type="button">Cancel</button>
+        </div>
+      </div>
+
+      <div id="planContainer" class="plan-container">
+        <div id="emptyState" class="empty-state hidden">
+          <p>No site plan yet. Upload one to get started.</p>
+          <button id="addSitePlanBtn" type="button">Upload site plan</button>
+        </div>
+      </div>
+      <p class="hint">Click anywhere on the floor plan to drop a pin. Click an existing pin to open its timeline.</p>
+    </section>
+
+    <section id="view-unassigned" class="view hidden">
+      <div class="toolbar">
+        <strong>Unassigned photos</strong>
+        <button id="selectAllBtn" type="button">Select all</button>
+        <button id="clearSelectionBtn" type="button">Clear selection</button>
+        <button id="assignSelectedBtn" type="button" disabled>Assign selected to pin…</button>
+      </div>
+      <div id="unassignedGrid" class="photo-grid"></div>
+      <button id="loadMoreBtn" class="hidden" type="button">Load more</button>
+    </section>
+  </main>
+
+  <aside id="pinPanel" class="side-panel hidden">
+    <div class="side-panel-header">
+      <input id="pinLabelInput" placeholder="Pin label">
+      <input id="pinCategoryInput" list="categoryOptions" placeholder="category (optional)">
+      <datalist id="categoryOptions">
+        <option value="interior">
+        <option value="exterior">
+        <option value="structural">
+      </datalist>
+      <button id="pinDeleteBtn" type="button" title="Delete pin">Delete</button>
+      <button id="pinPanelCloseBtn" type="button" title="Close">&times;</button>
+    </div>
+    <div class="pin-compass-wrap">
+      <svg id="pinCompass" viewBox="-110 -110 220 220"></svg>
+      <p class="hint">Drag on the ring to filter photos by the direction they were taken.</p>
+      <label class="compass-width-label">Wedge width
+        <input type="range" id="pinCompassWidth" min="10" max="180" step="5" value="40">
+      </label>
+      <button id="pinCompassClearFilterBtn" type="button" class="hidden">Clear direction filter</button>
+    </div>
+    <div id="pinTimeline" class="timeline"></div>
+  </aside>
+
+  <div id="modalBackdrop" class="modal-backdrop hidden"></div>
+
+  <div id="floorplanModal" class="modal hidden">
+    <h2 id="floorplanModalTitle">Add floor plan</h2>
+    <form id="floorplanForm">
+      <label>Name <input type="text" id="floorplanNameInput" required></label>
+      <label>Image <input type="file" id="floorplanImageInput" accept="image/*" required></label>
+      <input type="hidden" id="floorplanIsSitePlanInput" value="0">
+      <div class="modal-actions">
+        <button type="button" id="floorplanCancelBtn">Cancel</button>
+        <button type="submit">Save</button>
+      </div>
+    </form>
+  </div>
+
+  <div id="importModal" class="modal hidden">
+    <h2>Import photos</h2>
+    <form id="importForm">
+      <label>Folder path on this machine
+        <input type="text" id="importPathInput" placeholder="e.g. C:\Users\me\Pictures\SiteVisit" required>
+      </label>
+      <div class="modal-actions">
+        <button type="button" id="importCancelBtn">Cancel</button>
+        <button type="submit">Start import</button>
+      </div>
+    </form>
+    <div id="importProgress" class="import-progress hidden">
+      <progress id="importProgressBar" max="100" value="0"></progress>
+      <p id="importProgressText"></p>
+      <ul id="importErrors" class="import-errors"></ul>
+      <button id="importDoneBtn" class="hidden" type="button">Done</button>
+    </div>
+  </div>
+
+  <div id="photoModal" class="modal photo-modal hidden">
+    <button id="photoModalCloseBtn" class="modal-close" type="button">&times;</button>
+    <div class="photo-modal-body">
+      <div class="photo-modal-image">
+        <a id="photoFullLink" target="_blank" rel="noopener"><img id="photoModalImg" alt="Full-size photo"></a>
+      </div>
+      <div class="photo-modal-details">
+        <p id="photoModalDate"></p>
+        <label>Pin
+          <select id="photoModalPinSelect"></select>
+        </label>
+        <label>Caption
+          <textarea id="photoModalCaption" rows="2"></textarea>
+        </label>
+        <div class="direction-editor">
+          <p>Direction: <span id="photoModalDirectionLabel">not set</span></p>
+          <svg id="photoDial" viewBox="-70 -70 140 140"></svg>
+          <button type="button" id="photoDialSetBtn">Set direction</button>
+        </div>
+        <button type="button" id="photoModalSaveBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="pinDeleteModal" class="modal hidden">
+    <h2>Delete pin</h2>
+    <p id="pinDeleteMessage"></p>
+    <div class="modal-actions">
+      <button type="button" id="pinDeleteUnassignBtn">Unassign photos, delete pin</button>
+      <button type="button" id="pinDeleteAlsoPhotosBtn">Delete photos too</button>
+      <button type="button" id="pinDeleteCancelBtn">Cancel</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script type="module" src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
