@@ -1,5 +1,5 @@
 import { api, thumbUrl } from "./api.js";
-import { state, toast, showModal, hideModal, formatDate } from "./state.js";
+import { state, toast, showModal, hideModal } from "./state.js";
 import { svgEl, headingToXY, xyToHeading, clientPointToSvg } from "./compass.js";
 import { openPhotoModal } from "./photoModal.js";
 
@@ -51,6 +51,9 @@ async function refreshTimeline() {
   onChangeCallback?.onOverlayUpdate?.(currentPhotos, directionFilter);
 }
 
+// Gallery: large photos, no text — chronological order (oldest first) is
+// still the sort, it's just no longer spelled out as a date label. Open a
+// photo for its date/direction/caption detail instead of showing it here.
 function renderTimeline() {
   timelineEl.innerHTML = "";
   const visible = currentPhotos.filter(
@@ -69,12 +72,7 @@ function renderTimeline() {
     const img = document.createElement("img");
     img.src = thumbUrl(photo.thumbnail_path);
     img.alt = "";
-    const meta = document.createElement("div");
-    meta.className = "timeline-meta";
-    const dirText = photo.direction_deg != null ? `${Math.round(photo.direction_deg)}°` : "direction not set";
-    meta.innerHTML = `<div>${formatDate(photo.taken_at)}</div><div>${dirText}</div>`;
     item.appendChild(img);
-    item.appendChild(meta);
     item.addEventListener("click", () => openPhotoModal(photo.id, { onSaved: refreshTimeline }));
     timelineEl.appendChild(item);
   }

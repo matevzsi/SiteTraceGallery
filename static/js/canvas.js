@@ -6,7 +6,7 @@ import { openPinPanel, closePinPanel } from "./pinPanel.js";
 
 const container = document.getElementById("planContainer");
 const emptyState = document.getElementById("emptyState");
-const floorplanSelect = document.getElementById("floorplanSelect");
+const floorplanTabs = document.getElementById("floorplanTabs");
 const layerEditBtn = document.getElementById("layerEditBtn");
 const replaceImageBtn = document.getElementById("replaceImageBtn");
 const layerEditControls = document.getElementById("layerEditControls");
@@ -93,14 +93,16 @@ export function getActiveFloorplan() {
 }
 
 export function populateFloorplanSelect() {
-  floorplanSelect.innerHTML = "";
+  floorplanTabs.innerHTML = "";
   for (const fp of state.floorplans) {
-    const opt = document.createElement("option");
-    opt.value = fp.id;
-    opt.textContent = fp.is_site_plan ? `${fp.name} (site plan)` : fp.name;
-    floorplanSelect.appendChild(opt);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "nav-btn" + (fp.is_site_plan ? " site-plan-tab" : "");
+    btn.classList.toggle("active", fp.id === state.activeFloorplanId);
+    btn.textContent = fp.is_site_plan ? `${fp.name} (site plan)` : fp.name;
+    btn.addEventListener("click", () => selectFloorplan(fp.id));
+    floorplanTabs.appendChild(btn);
   }
-  if (state.activeFloorplanId != null) floorplanSelect.value = state.activeFloorplanId;
 }
 
 export async function setFloorplans(list) {
@@ -528,5 +530,3 @@ export async function refreshFloorplans() {
   const res = await api.listFloorplans();
   await setFloorplans(res.floorplans);
 }
-
-floorplanSelect.addEventListener("change", () => selectFloorplan(floorplanSelect.value));

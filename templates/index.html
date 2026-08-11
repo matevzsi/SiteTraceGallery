@@ -9,18 +9,17 @@
 <body>
   <header class="topbar">
     <h1>SiteTrace</h1>
+    <div id="floorplanTabs" class="floorplan-tabs"></div>
     <nav>
       <button id="navUnassignedBtn" class="nav-btn" type="button">Show unassigned <span id="unassignedCount" class="badge">0</span></button>
       <button id="importBtn" class="nav-btn" type="button">Import photos…</button>
     </nav>
   </header>
 
+  <div class="app-body">
   <main>
     <section id="view-home">
       <div class="toolbar">
-        <label class="toolbar-item">Floor plan
-          <select id="floorplanSelect"></select>
-        </label>
         <button id="addFloorplanBtn" type="button">+ Add floor plan</button>
         <button id="replaceImageBtn" type="button" disabled>Replace image…</button>
         <button id="layerEditBtn" type="button" disabled>Layer edit mode</button>
@@ -88,6 +87,7 @@
     </div>
     <div id="pinTimeline" class="timeline"></div>
   </aside>
+  </div>
 
   <div id="modalBackdrop" class="modal-backdrop hidden"></div>
 
