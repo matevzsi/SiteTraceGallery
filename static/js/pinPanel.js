@@ -76,7 +76,8 @@ function renderTimeline() {
   for (const photo of visible) {
     const item = document.createElement("div");
     item.className = "photo-card";
-    item.title = formatDate(photo.taken_at);
+    const noDirection = photo.direction_deg == null;
+    item.title = formatDate(photo.taken_at) + (noDirection ? " — no direction set" : "");
 
     const img = document.createElement("img");
     img.className = "photo-thumb";
@@ -90,6 +91,15 @@ function renderTimeline() {
     caption.className = "photo-caption";
     caption.textContent = formatDay(photo.taken_at);
     item.appendChild(caption);
+
+    // same marker the inbox uses — it matters more here, since a photo
+    // without a heading can never show up under the compass angle filter
+    if (noDirection) {
+      const dot = document.createElement("span");
+      dot.className = "photo-nodir";
+      dot.title = "No direction set";
+      item.appendChild(dot);
+    }
 
     item.addEventListener("click", () => openPhotoModal(photo.id, { onSaved: refreshTimeline }));
     frag.appendChild(item);

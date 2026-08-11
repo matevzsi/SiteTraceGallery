@@ -240,6 +240,10 @@ decisions that would make adding them later painful.
   side panel), sorted by `taken_at` ascending (oldest first, so it reads
   like progress over time). Large square tiles carrying only the shot date
   as an overlay caption — open a photo to see its direction and caption.
+- Tiles with no `direction_deg` set carry the same small marker the inbox
+  uses, in the gallery as well: without a heading a photo can never appear
+  under the compass angle filter, so which ones still need one has to be
+  visible at a glance.
 - Click through to full resolution from a photo's detail view.
 - Around the pin's compass, show small arrows indicating the directions the
   assigned photos were taken from, and a draggable pie-wedge angle filter
