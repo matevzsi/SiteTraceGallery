@@ -148,6 +148,7 @@ export async function selectFloorplan(id, opts = {}) {
   const fp = getActiveFloorplan();
   layerEditBtn.disabled = !fp || fp.is_site_plan;
   replaceImageBtn.disabled = !fp;
+  movablePinId = null;
   setLayerEditMode(false);
   if (!opts.skipPopulate) populateFloorplanSelect();
   await loadPinsAndRender();
@@ -254,11 +255,14 @@ function renderPins() {
   pinsLayerEl.innerHTML = "";
   for (const pin of state.pins) {
     const el = document.createElement("div");
-    el.className = "pin-marker" + (pin.id === state.selectedPinId ? " selected" : "");
+    el.className =
+      "pin-marker" +
+      (pin.id === state.selectedPinId ? " selected" : "") +
+      (pin.id === movablePinId ? " movable" : "");
     el.style.left = pin.x * 100 + "%";
     el.style.top = pin.y * 100 + "%";
     el.style.transform = `scale(${1 / zoom})`;
-    el.title = pin.label || "(unlabeled pin)";
+    el.title = pin.id === movablePinId ? "Drag to move this pin" : pin.label || "(unlabeled pin)";
 
     if (pin.indicator_direction_deg !== null && pin.indicator_direction_deg !== undefined) {
       const arrow = document.createElement("div");
@@ -280,11 +284,89 @@ function renderPins() {
     }
     el.addEventListener("click", (e) => {
       e.stopPropagation();
+      if (suppressNextPinClick) {
+        suppressNextPinClick = false;
+        return;
+      }
       onPinClick(pin);
     });
+    el.addEventListener("mousedown", (e) => onPinMarkerMouseDown(e, pin, el));
     attachPinDropTarget(el, pin);
     pinsLayerEl.appendChild(el);
   }
+}
+
+// --- moving a pin ------------------------------------------------------
+// Deliberately behind an explicit unlock in the pin panel: pins are dropped
+// by clicking the plan, so a freely draggable marker would make every
+// slightly-off click a silent reposition.
+
+let movablePinId = null;
+let pinDragState = null;
+let suppressNextPinClick = false;
+
+/** Called from the pin panel's lock/unlock button (via the hooks in app.js). */
+export function setPinMovable(pinId) {
+  if (movablePinId === pinId) return;
+  movablePinId = pinId;
+  if (pinsLayerEl) renderPins();
+}
+
+function onPinMarkerMouseDown(e, pin, el) {
+  if (e.button !== 0 || pin.id !== movablePinId || state.assignMode || state.layerEditMode) return;
+  e.preventDefault();
+  e.stopPropagation(); // don't let the container start a pan
+  pinDragState = { pin, el, start: screenToContent(e.clientX, e.clientY), origX: pin.x, origY: pin.y, moved: false };
+  el.classList.add("dragging");
+  window.addEventListener("mousemove", onPinDragMove);
+  window.addEventListener("mouseup", onPinDragEnd);
+}
+
+function onPinDragMove(e) {
+  if (!pinDragState) return;
+  const fp = getActiveFloorplan();
+  if (!fp) return;
+  const cur = screenToContent(e.clientX, e.clientY);
+  // convert both ends of the gesture into the layer's own normalized space
+  // so the drag stays true under the layer's scale and rotation
+  const t = getTransform(fp, container);
+  const a = t.toLocal(pinDragState.start.x, pinDragState.start.y);
+  const b = t.toLocal(cur.x, cur.y);
+  const nx = clamp01(pinDragState.origX + (b.x - a.x));
+  const ny = clamp01(pinDragState.origY + (b.y - a.y));
+  if (!pinDragState.moved && (Math.abs(nx - pinDragState.origX) > 0.001 || Math.abs(ny - pinDragState.origY) > 0.001)) {
+    pinDragState.moved = true;
+  }
+  pinDragState.pin.x = nx;
+  pinDragState.pin.y = ny;
+  // move just this marker rather than re-rendering the layer mid-drag
+  pinDragState.el.style.left = nx * 100 + "%";
+  pinDragState.el.style.top = ny * 100 + "%";
+  refreshSelectedPinOverlay(overlayPhotos, overlayFilter);
+}
+
+async function onPinDragEnd() {
+  window.removeEventListener("mousemove", onPinDragMove);
+  window.removeEventListener("mouseup", onPinDragEnd);
+  const drag = pinDragState;
+  pinDragState = null;
+  if (!drag) return;
+  drag.el.classList.remove("dragging");
+  if (!drag.moved) return;
+  // the marker's click fires right after this mouseup; without suppressing
+  // it, finishing a drag would also re-open the panel
+  suppressNextPinClick = true;
+  try {
+    await api.updatePin(drag.pin.id, { x: drag.pin.x, y: drag.pin.y });
+    toast("Pin moved");
+  } catch (err) {
+    toast(err.message, true);
+    await loadPinsAndRender(); // put it back where the server still has it
+  }
+}
+
+function clamp01(v) {
+  return Math.min(1, Math.max(0, v));
 }
 
 // --- drag photos onto a pin to assign them ----------------------------

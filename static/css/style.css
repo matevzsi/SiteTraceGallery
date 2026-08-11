@@ -601,6 +601,34 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .pin-marker.selected .pin-arrow { background: var(--pin-selected); }
 
+/* unlocked for repositioning (see setPinMovable in canvas.js) — the ring
+   pulses so it's obvious which pin is loose and that the state is
+   temporary. Emphasis can't use transform: canvas.js owns that inline for
+   counter-scaling. */
+.pin-marker.movable {
+  cursor: grab;
+  border-style: dashed;
+  animation: pin-loose 1.6s ease-in-out infinite;
+}
+.pin-marker.movable.dragging { cursor: grabbing; animation: none; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45), 0 0 0 10px var(--accent-soft); }
+@keyframes pin-loose {
+  0%, 100% { box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35), 0 0 0 4px var(--pin-ring); }
+  50% { box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35), 0 0 0 10px var(--pin-ring); }
+}
+
+.pin-action-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+.pin-action-row .hint { margin: 0; }
+#pinMoveBtn .icon-unlocked { display: none; }
+#pinMoveBtn.is-unlocked .icon-locked { display: none; }
+#pinMoveBtn.is-unlocked .icon-unlocked { display: block; }
+
 /* drag-to-assign: while photos are in flight every pin advertises itself
    as a target and grows an invisible ring of extra hit area, since the
    markers are deliberately small on screen. Scale can't be used for the

@@ -8,6 +8,9 @@ const panel = document.getElementById("pinPanel");
 const labelInput = document.getElementById("pinLabelInput");
 const categoryInput = document.getElementById("pinCategoryInput");
 const photoCountEl = document.getElementById("pinPhotoCount");
+const moveBtn = document.getElementById("pinMoveBtn");
+const moveBtnLabel = document.getElementById("pinMoveBtnLabel");
+const moveHint = document.getElementById("pinMoveHint");
 const deleteBtn = document.getElementById("pinDeleteBtn");
 const closeBtn = document.getElementById("pinPanelCloseBtn");
 const compass = document.getElementById("pinCompass");
@@ -19,10 +22,11 @@ let currentPin = null;
 let currentPhotos = [];
 let directionFilter = null; // { center, width } in degrees
 let pendingDeletePinId = null;
+let positionUnlocked = false;
 let onChangeCallback = null; // set by canvas.js consumers via setHooks
 
-export function setHooks({ onPinsChanged, onOverlayUpdate }) {
-  onChangeCallback = { onPinsChanged, onOverlayUpdate };
+export function setHooks({ onPinsChanged, onOverlayUpdate, onPinMovableChange }) {
+  onChangeCallback = { onPinsChanged, onOverlayUpdate, onPinMovableChange };
 }
 
 export async function openPinPanel(pin) {
@@ -31,18 +35,41 @@ export async function openPinPanel(pin) {
   clearFilterBtn.classList.add("hidden");
   labelInput.value = pin.label || "";
   categoryInput.value = pin.category || "";
+  setPositionUnlocked(false); // every pin opens locked
   panel.classList.remove("hidden");
   await refreshTimeline();
 }
 
 export function closePinPanel() {
   panel.classList.add("hidden");
+  setPositionUnlocked(false);
   currentPin = null;
   currentPhotos = [];
   state.selectedPinId = null;
   onChangeCallback?.onOverlayUpdate?.(null, null);
   onChangeCallback?.onPinsChanged?.();
 }
+
+// --- move the pin ------------------------------------------------------
+// Pins are dropped by clicking the plan, so leaving them draggable would
+// turn every slightly-off click into a silent reposition. Unlocking is an
+// explicit, per-pin, non-sticky decision: it resets whenever the panel
+// closes or another pin is opened.
+
+function setPositionUnlocked(on) {
+  positionUnlocked = on && !!currentPin;
+  moveBtn.classList.toggle("active", positionUnlocked);
+  moveBtnLabel.textContent = positionUnlocked ? "Lock position" : "Unlock position";
+  moveBtn.classList.toggle("is-unlocked", positionUnlocked);
+  moveHint.classList.toggle("hidden", !positionUnlocked);
+  onChangeCallback?.onPinMovableChange?.(positionUnlocked ? currentPin.id : null);
+}
+
+moveBtn.addEventListener("click", () => {
+  if (!currentPin) return;
+  setPositionUnlocked(!positionUnlocked);
+  if (positionUnlocked) toast("Drag the pin on the plan to move it.");
+});
 
 async function refreshTimeline() {
   if (!currentPin) return;

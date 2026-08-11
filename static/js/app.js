@@ -1,4 +1,4 @@
-import { refreshFloorplans, loadPinsAndRender, refreshSelectedPinOverlay } from "./canvas.js";
+import { refreshFloorplans, loadPinsAndRender, refreshSelectedPinOverlay, setPinMovable } from "./canvas.js";
 import { setHooks } from "./pinPanel.js";
 import { loadUnassigned } from "./unassigned.js";
 import "./dialogs.js";
@@ -6,9 +6,12 @@ import "./floorplanModal.js";
 import "./importDialog.js";
 import "./photoModal.js";
 
+// canvas.js imports the pin panel, so the panel talks back through these
+// hooks rather than importing canvas.js and closing the cycle
 setHooks({
   onPinsChanged: loadPinsAndRender,
   onOverlayUpdate: refreshSelectedPinOverlay,
+  onPinMovableChange: setPinMovable,
 });
 
 // --- theme ------------------------------------------------------------

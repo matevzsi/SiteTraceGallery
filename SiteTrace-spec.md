@@ -182,6 +182,14 @@ decisions that would make adding them later painful.
 - Edit pin label/category; delete a pin (with confirmation). If the pin has
   photos assigned, the user is asked whether to unassign them (back to the
   inbox) or delete them too before the pin is removed.
+- Reposition a pin: open it, click "Unlock position" in its panel, then drag
+  the marker on the plan; the new position saves on release. Pins are
+  locked by default and re-lock whenever the panel closes or another pin is
+  opened — since pins are *created* by clicking the plan, a permanently
+  draggable marker would turn every slightly-off click into a silent
+  reposition. The drag is computed in the layer's own normalized space, so
+  it stays true under the layer's scale and rotation as well as map
+  pan/zoom.
 - Render pins as markers on the floor plan; each pin shows a small direction
   indicator based on the most recent photo's heading that has one set (or an
   average — pick a sensible simple default), and the number of photos
