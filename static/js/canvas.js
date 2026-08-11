@@ -1,7 +1,7 @@
 import { api, floorplanUrl } from "./api.js";
 import { state, toast } from "./state.js";
 import { getTransform } from "./layerTransform.js";
-import { svgEl, headingToXY } from "./compass.js";
+import { svgEl, headingToXY, xyToHeading } from "./compass.js";
 import { openPinPanel, closePinPanel } from "./pinPanel.js";
 
 const container = document.getElementById("planContainer");
@@ -10,16 +10,42 @@ const floorplanSelect = document.getElementById("floorplanSelect");
 const layerEditBtn = document.getElementById("layerEditBtn");
 const layerEditControls = document.getElementById("layerEditControls");
 const layerOpacity = document.getElementById("layerOpacity");
-const layerScale = document.getElementById("layerScale");
-const layerRotation = document.getElementById("layerRotation");
 const assignBanner = document.getElementById("assignModeBanner");
 const assignModeCount = document.getElementById("assignModeCount");
 
+let viewportEl = null;
 let sitePlanImgEl = null;
 let wrapperEl = null;
 let wrapperImgEl = null;
+let resizeHandleEl = null;
+let rotateHandleEl = null;
 let pinsLayerEl = null;
 let overlaySvg = null;
+
+// pan/zoom of the whole map (site plan + floor plan layer + pins), applied
+// as a CSS transform on planViewport. Purely a view preference — not
+// persisted, resets on reload.
+const MIN_ZOOM = 0.4;
+const MAX_ZOOM = 8;
+let zoom = 1;
+let panX = 0;
+let panY = 0;
+
+function applyViewportTransform() {
+  if (viewportEl) viewportEl.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+}
+
+function screenToContent(clientX, clientY) {
+  const rect = container.getBoundingClientRect();
+  return { x: (clientX - rect.left - panX) / zoom, y: (clientY - rect.top - panY) / zoom };
+}
+
+function resetView() {
+  zoom = 1;
+  panX = 0;
+  panY = 0;
+  applyViewportTransform();
+}
 
 export function getSitePlan() {
   return state.floorplans.find((f) => f.is_site_plan) || null;
@@ -78,10 +104,18 @@ function ensureDom() {
   }
   emptyState.classList.add("hidden");
 
+  if (!viewportEl) {
+    viewportEl = document.createElement("div");
+    viewportEl.className = "plan-viewport";
+    container.appendChild(viewportEl);
+    container.addEventListener("wheel", onContainerWheel, { passive: false });
+    container.addEventListener("mousedown", onContainerMouseDown);
+  }
+
   if (!sitePlanImgEl) {
     sitePlanImgEl = document.createElement("img");
     sitePlanImgEl.id = "sitePlanImg";
-    container.appendChild(sitePlanImgEl);
+    viewportEl.appendChild(sitePlanImgEl);
   }
   sitePlanImgEl.classList.remove("hidden");
 
@@ -90,18 +124,27 @@ function ensureDom() {
     wrapperEl.className = "floorplan-wrapper";
     wrapperImgEl = document.createElement("img");
     wrapperEl.appendChild(wrapperImgEl);
-    container.appendChild(wrapperEl);
+    resizeHandleEl = document.createElement("div");
+    resizeHandleEl.className = "resize-handle";
+    resizeHandleEl.title = "Drag to resize";
+    wrapperEl.appendChild(resizeHandleEl);
+    rotateHandleEl = document.createElement("div");
+    rotateHandleEl.className = "rotate-handle";
+    rotateHandleEl.title = "Drag to rotate";
+    wrapperEl.appendChild(rotateHandleEl);
+    viewportEl.appendChild(wrapperEl);
     wrapperEl.addEventListener("mousedown", onWrapperMouseDown);
+    resizeHandleEl.addEventListener("mousedown", onResizeHandleMouseDown);
+    rotateHandleEl.addEventListener("mousedown", onRotateHandleMouseDown);
   }
   if (!pinsLayerEl) {
     pinsLayerEl = document.createElement("div");
     pinsLayerEl.className = "pins-layer";
-    container.appendChild(pinsLayerEl);
-    pinsLayerEl.addEventListener("click", onPlanClick);
+    viewportEl.appendChild(pinsLayerEl);
   }
   if (!overlaySvg) {
     overlaySvg = svgEl("svg", { class: "direction-overlay" });
-    container.appendChild(overlaySvg);
+    viewportEl.appendChild(overlaySvg);
   }
   pinsLayerEl.classList.remove("hidden");
   overlaySvg.classList.remove("hidden");
@@ -118,7 +161,7 @@ function render() {
 
   if (!fp || fp.is_site_plan) {
     wrapperEl.classList.add("hidden");
-    if (pinsLayerEl.parentElement !== container) container.appendChild(pinsLayerEl);
+    if (pinsLayerEl.parentElement !== viewportEl) viewportEl.appendChild(pinsLayerEl);
   } else {
     wrapperEl.classList.remove("hidden");
     wrapperImgEl.src = floorplanUrl(fp.image_path);
@@ -212,13 +255,10 @@ export function refreshSelectedPinOverlay(photos, filter) {
   renderDirectionOverlay(photos, filter);
 }
 
-function onPlanClick(e) {
-  if (state.layerEditMode) return;
-  const rect = container.getBoundingClientRect();
-  const px = e.clientX - rect.left;
-  const py = e.clientY - rect.top;
+function handlePlanClick(clientX, clientY) {
   const fp = getActiveFloorplan();
   if (!fp) return;
+  const { x: px, y: py } = screenToContent(clientX, clientY);
   const t = getTransform(fp, container);
   const { x, y } = t.toLocal(px, py);
   if (x < 0 || x > 1 || y < 0 || y > 1) return;
@@ -230,6 +270,66 @@ function onPlanClick(e) {
   }
   createPinAt(fp.id, x, y);
 }
+
+// --- pan (left-drag) + zoom (wheel) ------------------------------------
+// Left-drag both pans the map and places pins, so a movement threshold
+// decides which gesture the user meant: a press-release with barely any
+// movement is a click (place/open a pin); anything past the threshold is a
+// pan and suppresses pin creation on release.
+
+const PAN_THRESHOLD_PX = 4;
+let panState = null;
+
+function onContainerWheel(e) {
+  if (!getSitePlan()) return;
+  e.preventDefault();
+  const rect = container.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const factor = Math.exp(-e.deltaY * 0.0015);
+  const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom * factor));
+  const contentX = (mx - panX) / zoom;
+  const contentY = (my - panY) / zoom;
+  panX = mx - contentX * newZoom;
+  panY = my - contentY * newZoom;
+  zoom = newZoom;
+  applyViewportTransform();
+}
+
+function onContainerMouseDown(e) {
+  if (e.button !== 0) return;
+  if (state.layerEditMode) return; // wrapperEl's own mousedown drags the layer instead
+  if (!getSitePlan()) return;
+  if (e.target.closest(".pin-marker")) return; // let the marker's own click handler run
+  panState = { startClientX: e.clientX, startClientY: e.clientY, startPanX: panX, startPanY: panY, moved: false };
+  window.addEventListener("mousemove", onContainerMouseMove);
+  window.addEventListener("mouseup", onContainerMouseUp);
+}
+
+function onContainerMouseMove(e) {
+  if (!panState) return;
+  const dx = e.clientX - panState.startClientX;
+  const dy = e.clientY - panState.startClientY;
+  if (!panState.moved && Math.hypot(dx, dy) > PAN_THRESHOLD_PX) {
+    panState.moved = true;
+    container.classList.add("panning");
+  }
+  if (panState.moved) {
+    panX = panState.startPanX + dx;
+    panY = panState.startPanY + dy;
+    applyViewportTransform();
+  }
+}
+
+function onContainerMouseUp(e) {
+  window.removeEventListener("mousemove", onContainerMouseMove);
+  window.removeEventListener("mouseup", onContainerMouseUp);
+  container.classList.remove("panning");
+  if (panState && !panState.moved) handlePlanClick(e.clientX, e.clientY);
+  panState = null;
+}
+
+document.getElementById("resetViewBtn").addEventListener("click", resetView);
 
 async function createPinAt(floorplanId, x, y) {
   const label = prompt("Pin label (e.g. Kitchen, Southeast corner):", "");
@@ -278,11 +378,6 @@ function setLayerEditMode(on) {
   state.layerEditMode = on;
   layerEditControls.classList.toggle("hidden", !on);
   layerEditBtn.classList.toggle("active", on);
-  const fp = getActiveFloorplan();
-  if (on && fp) {
-    layerScale.value = fp.scale;
-    layerRotation.value = fp.rotation_deg;
-  }
   render();
 }
 
@@ -291,20 +386,6 @@ document.getElementById("layerEditDoneBtn").addEventListener("click", () => setL
 layerOpacity.addEventListener("input", () => {
   if (wrapperEl) wrapperEl.style.opacity = layerOpacity.value;
 });
-layerScale.addEventListener("input", () => {
-  const fp = getActiveFloorplan();
-  if (!fp) return;
-  fp.scale = parseFloat(layerScale.value);
-  render();
-});
-layerScale.addEventListener("change", () => persistTransform());
-layerRotation.addEventListener("input", () => {
-  const fp = getActiveFloorplan();
-  if (!fp) return;
-  fp.rotation_deg = parseFloat(layerRotation.value);
-  render();
-});
-layerRotation.addEventListener("change", () => persistTransform());
 
 async function persistTransform() {
   const fp = getActiveFloorplan();
@@ -321,30 +402,84 @@ async function persistTransform() {
   }
 }
 
+// Direct-manipulation transform: drag the image body to move it, the
+// corner handle to resize (uniform scale), the top handle to rotate.
+// All three read the mouse position through screenToContent() so dragging
+// stays correct at any pan/zoom level, and pivot around the layer's own
+// center (in content-space pixels) so resize/rotate don't also drift the
+// layer's position.
 let dragState = null;
+
 function onWrapperMouseDown(e) {
   if (!state.layerEditMode) return;
   e.preventDefault();
+  e.stopPropagation();
   const fp = getActiveFloorplan();
   if (!fp) return;
-  dragState = { startX: e.clientX, startY: e.clientY, offsetX: fp.offset_x, offsetY: fp.offset_y };
-  window.addEventListener("mousemove", onWrapperMouseMove);
-  window.addEventListener("mouseup", onWrapperMouseUp);
+  const start = screenToContent(e.clientX, e.clientY);
+  dragState = { kind: "move", startX: start.x, startY: start.y, offsetX: fp.offset_x, offsetY: fp.offset_y };
+  window.addEventListener("mousemove", onDragMove);
+  window.addEventListener("mouseup", onDragEnd);
 }
-function onWrapperMouseMove(e) {
+
+function onResizeHandleMouseDown(e) {
+  if (!state.layerEditMode) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const fp = getActiveFloorplan();
+  if (!fp) return;
+  const CW = container.clientWidth;
+  const CH = container.clientHeight;
+  const cx = fp.offset_x * CW;
+  const cy = fp.offset_y * CH;
+  const start = screenToContent(e.clientX, e.clientY);
+  const startRadius = Math.hypot(start.x - cx, start.y - cy) || 1;
+  dragState = { kind: "resize", cx, cy, startRadius, startScale: fp.scale };
+  window.addEventListener("mousemove", onDragMove);
+  window.addEventListener("mouseup", onDragEnd);
+}
+
+function onRotateHandleMouseDown(e) {
+  if (!state.layerEditMode) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const fp = getActiveFloorplan();
+  if (!fp) return;
+  const CW = container.clientWidth;
+  const CH = container.clientHeight;
+  const cx = fp.offset_x * CW;
+  const cy = fp.offset_y * CH;
+  const start = screenToContent(e.clientX, e.clientY);
+  const startAngle = xyToHeading(start.x - cx, start.y - cy);
+  dragState = { kind: "rotate", cx, cy, startAngle, startRotation: fp.rotation_deg };
+  window.addEventListener("mousemove", onDragMove);
+  window.addEventListener("mouseup", onDragEnd);
+}
+
+function onDragMove(e) {
   if (!dragState) return;
   const fp = getActiveFloorplan();
   if (!fp) return;
-  const rect = container.getBoundingClientRect();
-  const dx = (e.clientX - dragState.startX) / rect.width;
-  const dy = (e.clientY - dragState.startY) / rect.height;
-  fp.offset_x = dragState.offsetX + dx;
-  fp.offset_y = dragState.offsetY + dy;
+  const cur = screenToContent(e.clientX, e.clientY);
+
+  if (dragState.kind === "move") {
+    const CW = container.clientWidth;
+    const CH = container.clientHeight;
+    fp.offset_x = dragState.offsetX + (cur.x - dragState.startX) / CW;
+    fp.offset_y = dragState.offsetY + (cur.y - dragState.startY) / CH;
+  } else if (dragState.kind === "resize") {
+    const radius = Math.hypot(cur.x - dragState.cx, cur.y - dragState.cy);
+    fp.scale = Math.max(0.05, dragState.startScale * (radius / dragState.startRadius));
+  } else if (dragState.kind === "rotate") {
+    const angle = xyToHeading(cur.x - dragState.cx, cur.y - dragState.cy);
+    fp.rotation_deg = dragState.startRotation + (angle - dragState.startAngle);
+  }
   render();
 }
-function onWrapperMouseUp() {
-  window.removeEventListener("mousemove", onWrapperMouseMove);
-  window.removeEventListener("mouseup", onWrapperMouseUp);
+
+function onDragEnd() {
+  window.removeEventListener("mousemove", onDragMove);
+  window.removeEventListener("mouseup", onDragEnd);
   dragState = null;
   persistTransform();
 }

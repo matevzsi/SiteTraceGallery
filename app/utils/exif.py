@@ -32,7 +32,18 @@ def extract_exif(path: Path) -> dict:
 
     tag_map = {TAGS.get(k, k): v for k, v in exif.items()}
 
-    dt_str = tag_map.get("DateTimeOriginal") or tag_map.get("DateTime")
+    # DateTimeOriginal/DateTimeDigitized live in the Exif sub-IFD, not the
+    # top-level IFD0 — exif.items() above only covers IFD0 (which holds the
+    # much less reliable "DateTime" = file-modified tag), so without this
+    # the real shot date was silently missed and every photo fell back to
+    # file mtime.
+    try:
+        exif_ifd = exif.get_ifd(ExifTags.IFD.Exif)
+    except Exception:
+        exif_ifd = None
+    exif_tag_map = {TAGS.get(k, k): v for k, v in (exif_ifd or {}).items()}
+
+    dt_str = exif_tag_map.get("DateTimeOriginal") or exif_tag_map.get("DateTimeDigitized") or tag_map.get("DateTime")
     if dt_str:
         try:
             result["taken_at"] = datetime.datetime.strptime(str(dt_str).strip(), "%Y:%m:%d %H:%M:%S")

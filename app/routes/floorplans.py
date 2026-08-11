@@ -12,6 +12,21 @@ bp = Blueprint("floorplans", __name__, url_prefix="/api/floorplans")
 ALLOWED_EXT = {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".bmp"}
 
 
+def _default_scale(db, width_px: int, height_px: int) -> float:
+    """Pick an initial scale so a freshly uploaded floor plan layer fits
+    comfortably inside the site plan canvas instead of defaulting to
+    "as wide as the site plan" (scale=1.0), which for a floor plan with a
+    different aspect ratio produces a layer far taller/wider than the
+    visible canvas — pushing its layer-edit resize/rotate handles outside
+    the clipped viewport where they can't be reached."""
+    site = db.execute("SELECT width_px, height_px FROM floorplans WHERE is_site_plan = 1").fetchone()
+    if not site:
+        return 1.0
+    aspect_fp = height_px / width_px
+    aspect_site = site["width_px"] / site["height_px"]
+    return min(0.9, 0.9 / (aspect_fp * aspect_site))
+
+
 def _unique_name(directory: str, filename: str) -> str:
     stem, ext = os.path.splitext(filename)
     candidate = filename
@@ -58,11 +73,12 @@ def create_floorplan():
     image.save(dest_path)
 
     width, height = get_image_dimensions(dest_path)
+    scale = _default_scale(db, width, height) if not is_site_plan else 1.0
 
     cur = db.execute(
-        """INSERT INTO floorplans (name, image_path, width_px, height_px, is_site_plan)
-           VALUES (?, ?, ?, ?, ?)""",
-        (name, dest_name, width, height, 1 if is_site_plan else 0),
+        """INSERT INTO floorplans (name, image_path, width_px, height_px, is_site_plan, scale)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (name, dest_name, width, height, 1 if is_site_plan else 0, scale),
     )
     db.commit()
     row = db.execute("SELECT * FROM floorplans WHERE id = ?", (cur.lastrowid,)).fetchone()

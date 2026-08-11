@@ -10,24 +10,23 @@
   <header class="topbar">
     <h1>SiteTrace</h1>
     <nav>
-      <button id="navHomeBtn" class="nav-btn active" type="button">Floor plan</button>
-      <button id="navUnassignedBtn" class="nav-btn" type="button">Unassigned <span id="unassignedCount" class="badge">0</span></button>
+      <button id="navUnassignedBtn" class="nav-btn" type="button">Show unassigned <span id="unassignedCount" class="badge">0</span></button>
       <button id="importBtn" class="nav-btn" type="button">Import photos…</button>
     </nav>
   </header>
 
   <main>
-    <section id="view-home" class="view">
+    <section id="view-home">
       <div class="toolbar">
         <label class="toolbar-item">Floor plan
           <select id="floorplanSelect"></select>
         </label>
         <button id="addFloorplanBtn" type="button">+ Add floor plan</button>
         <button id="layerEditBtn" type="button" disabled>Layer edit mode</button>
+        <button id="resetViewBtn" type="button" title="Reset zoom/pan">Reset view</button>
         <div id="layerEditControls" class="layer-edit-controls hidden">
           <label>Opacity <input type="range" id="layerOpacity" min="0.1" max="1" step="0.05" value="0.75"></label>
-          <label>Scale <input type="range" id="layerScale" min="0.1" max="3" step="0.01"></label>
-          <label>Rotation <input type="range" id="layerRotation" min="-180" max="180" step="0.5"></label>
+          <span class="hint">Drag the image to move it, the corner handle to resize, the top handle to rotate.</span>
           <button id="layerEditDoneBtn" type="button">Done</button>
         </div>
         <div id="assignModeBanner" class="assign-banner hidden">
@@ -42,20 +41,23 @@
           <button id="addSitePlanBtn" type="button">Upload site plan</button>
         </div>
       </div>
-      <p class="hint">Click anywhere on the floor plan to drop a pin. Click an existing pin to open its timeline.</p>
-    </section>
-
-    <section id="view-unassigned" class="view hidden">
-      <div class="toolbar">
-        <strong>Unassigned photos</strong>
-        <button id="selectAllBtn" type="button">Select all</button>
-        <button id="clearSelectionBtn" type="button">Clear selection</button>
-        <button id="assignSelectedBtn" type="button" disabled>Assign selected to pin…</button>
-      </div>
-      <div id="unassignedGrid" class="photo-grid"></div>
-      <button id="loadMoreBtn" class="hidden" type="button">Load more</button>
+      <p class="hint">Click to drop a pin (or open an existing one). Drag to pan, scroll to zoom.</p>
     </section>
   </main>
+
+  <aside id="unassignedPanel" class="side-panel side-panel-left hidden">
+    <div class="side-panel-header">
+      <strong>Unassigned photos</strong>
+      <button id="unassignedPanelCloseBtn" type="button" title="Close">&times;</button>
+    </div>
+    <div class="toolbar">
+      <button id="selectAllBtn" type="button">Select all</button>
+      <button id="clearSelectionBtn" type="button">Clear selection</button>
+      <button id="assignSelectedBtn" type="button" disabled>Assign selected to pin…</button>
+    </div>
+    <div id="unassignedGrid" class="photo-grid"></div>
+    <button id="loadMoreBtn" class="hidden" type="button">Load more</button>
+  </aside>
 
   <aside id="pinPanel" class="side-panel hidden">
     <div class="side-panel-header">

@@ -2,8 +2,10 @@ import { api, thumbUrl } from "./api.js";
 import { toast, formatDate } from "./state.js";
 import { enterAssignMode } from "./canvas.js";
 import { openPhotoModal } from "./photoModal.js";
-import { switchView } from "./app.js";
 
+const panel = document.getElementById("unassignedPanel");
+const navBtn = document.getElementById("navUnassignedBtn");
+const closeBtn = document.getElementById("unassignedPanelCloseBtn");
 const grid = document.getElementById("unassignedGrid");
 const selectAllBtn = document.getElementById("selectAllBtn");
 const clearSelectionBtn = document.getElementById("clearSelectionBtn");
@@ -15,6 +17,22 @@ const selected = new Set();
 let page = 1;
 let hasMore = false;
 let loadedPhotos = [];
+let awaitingAssignResult = false;
+
+export function openUnassignedPanel() {
+  panel.classList.remove("hidden");
+  navBtn.classList.add("active");
+}
+export function closeUnassignedPanel() {
+  panel.classList.add("hidden");
+  navBtn.classList.remove("active");
+}
+function toggleUnassignedPanel() {
+  if (panel.classList.contains("hidden")) openUnassignedPanel();
+  else closeUnassignedPanel();
+}
+navBtn.addEventListener("click", toggleUnassignedPanel);
+closeBtn.addEventListener("click", closeUnassignedPanel);
 
 export async function loadUnassigned(reset = true) {
   if (reset) {
@@ -106,8 +124,15 @@ loadMoreBtn.addEventListener("click", () => {
 assignSelectedBtn.addEventListener("click", () => {
   if (selected.size === 0) return;
   enterAssignMode(Array.from(selected));
-  switchView("home");
+  awaitingAssignResult = true;
+  closeUnassignedPanel();
   toast("Click a pin on the floor plan to assign the selected photos.");
 });
 
-document.addEventListener("photos-assigned", () => loadUnassigned());
+document.addEventListener("photos-assigned", () => {
+  loadUnassigned();
+  if (awaitingAssignResult) {
+    awaitingAssignResult = false;
+    openUnassignedPanel();
+  }
+});
