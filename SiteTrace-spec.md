@@ -15,16 +15,18 @@ accounts, no multi-tenancy. Runs on `localhost` via a small local server.
 - Upload the sorroundings image (site plan) first, which is persistently shown in the background.
 - Upload one or more floor plan images (one per level: ground floor, first
   floor, roof, etc.).
-- Floor plan selector is a row of toggle buttons in the top bar (only one
-  active at a time); the site plan is always present underneath whichever
-  level is selected.
+- Floor plan selector is a segmented row of toggle buttons floating over
+  the top of the map (only one active at a time); the site plan is always
+  present underneath whichever level is selected.
 - Click on a floor plan to drop a **pin** representing a physical location
   (e.g. "Kitchen", "Southeast corner", "Garage"). Pin is referenced to the floor plane image.
 - The map (site plan + selected floor plan + pins) is pannable (left-drag)
-  and zoomable (scroll wheel, zooming toward the cursor) so large or
-  detailed plans stay usable. Pins and their labels hold a constant screen
-  size at any zoom level, like map POI markers.
-- Import photos in bulk; assign each photo to a pin.
+  and zoomable (scroll wheel toward the cursor, or floating +/−/reset
+  buttons) so large or detailed plans stay usable. Pins, their labels and
+  the direction arrows hold a constant screen size at any zoom level, like
+  map POI markers.
+- Import photos in bulk; assign each photo to a pin — either by selecting
+  photos and clicking a pin, or by dragging photos straight onto one.
 - Each photo also gets an approximate **camera direction** (which way the
   camera was facing), shown as an arrow on the plan at the pin (when the photo is selected)
 - Click a pin → see all photos assigned to it as a gallery, sorted
@@ -164,10 +166,13 @@ decisions that would make adding them later painful.
   afterward if the new image doesn't line up).
 - Support multiple floor plans (multiple levels + optionally a site/exterior
   plan).
-- Switch between floor plans via toggle buttons in the top bar (only one
-  active at a time).
+- Switch between floor plans via a segmented row of toggle buttons floating
+  over the top of the map (only one active at a time). Floor plan
+  *management* actions (add, replace image, align layer) live in the top
+  bar; the level *switcher* sits over the map, next to what it changes.
 
 ### 2. Pin placement
+
 - Click anywhere on the displayed floor plan to create a new pin at that
   point. A left-drag past a small movement threshold pans the map instead of
   placing a pin — only a press-release with little to no movement counts as
@@ -179,7 +184,8 @@ decisions that would make adding them later painful.
   inbox) or delete them too before the pin is removed.
 - Render pins as markers on the floor plan; each pin shows a small direction
   indicator based on the most recent photo's heading that has one set (or an
-  average — pick a sensible simple default). Pins and their labels hold a
+  average — pick a sensible simple default), and the number of photos
+  assigned to it. Pins, their labels and the direction arrows hold a
   constant screen size regardless of map zoom.
 
 ### 3. Photo import
@@ -203,13 +209,21 @@ decisions that would make adding them later painful.
 
 ### 4. Assigning photos to pins
 - An "unassigned photos" panel (left side panel, toggled from the top bar)
-  shows a grid of thumbnails where the user can select one or more photos
-  and assign them to a pin by clicking a pin on the floor plan; the panel
-  auto-closes while picking the pin and auto-reopens once the assignment
-  completes. The map stays visible and interactive the whole time.
+  shows a grid of thumbnails. Two ways to assign from there:
+  - **Select then click**: tick one or more photos, hit "Assign … to pin",
+    then click a pin on the floor plan. The panel auto-closes while picking
+    the pin and auto-reopens once the assignment completes.
+  - **Drag and drop**: drag a thumbnail straight onto a pin. Dragging a
+    selected photo carries the whole selection; dragging an unselected one
+    carries just that photo and leaves the selection alone. While a drag is
+    in flight every pin advertises itself as a target and grows extra hit
+    area around its (deliberately small) marker, and the pin under the
+    cursor highlights.
+  - The map stays visible and interactive throughout either route.
 - Thumbnails are square regardless of grid column width, with a +/− control
   to resize them, and a generously-sized click target around the selection
-  checkbox.
+  checkbox. The shot date rides along as an overlay caption rather than a
+  text row, so the tile stays exactly square at any thumbnail size.
 - Ability to reassign a photo to a different pin later, from a photo's
   detail view.
 
@@ -224,23 +238,55 @@ decisions that would make adding them later painful.
 ### 6. Timeline view
 - Click a pin → open a gallery of all photos assigned to that pin (right
   side panel), sorted by `taken_at` ascending (oldest first, so it reads
-  like progress over time). Large square tiles, no date/direction text on
-  the tiles themselves — open a photo to see its date, direction, and
-  caption.
+  like progress over time). Large square tiles carrying only the shot date
+  as an overlay caption — open a photo to see its direction and caption.
 - Click through to full resolution from a photo's detail view.
 - Around the pin's compass, show small arrows indicating the directions the
   assigned photos were taken from, and a draggable pie-wedge angle filter
-  that narrows the gallery to photos taken within that direction range.
+  that narrows the gallery to photos taken within that direction range. The
+  compass block is collapsible so it doesn't eat gallery space when unused.
 
 ### 7. Basic navigation
-- Top bar: app title, floor plan toggle buttons, "Show unassigned" (opens
-  the left panel), "Import photos…".
+- Top bar: app title, floor plan management actions (add / replace image /
+  align layer), "Unassigned" (opens the left panel) with its count,
+  "Import photos", and a light/dark theme toggle.
 - Main view (site plan + selected floor plan + pins) fills the available
   screen space below the top bar, preserving the site plan's aspect ratio.
+  Width always fills the stage; if the site plan's aspect ratio makes that
+  run taller than the visible area, the map area scrolls rather than
+  shrinking back to fit.
+- Map controls float over the map rather than stacking above it and eating
+  vertical space: level switcher top-centre, zoom in/out/reset bottom-right,
+  layer-align and assign-mode bars appearing over the map only while those
+  modes are active.
 - Pin click → gallery view opens as a right side panel (doesn't need a full
   page navigation); the map remains visible alongside it.
 - Unassigned photos panel (left side) and pin gallery panel (right side) can
   be open at the same time without covering the top bar's controls.
+
+### 8. Interface conventions
+- Light and dark themes, both driven by one set of CSS custom properties.
+  Default follows the OS; the top-bar toggle stores an explicit override in
+  `localStorage`, applied before first paint so a reload never flashes the
+  wrong theme.
+- No native `prompt()`/`confirm()`/`alert()` — naming a new pin and
+  confirming a delete both use in-app dialogs, so they're themed, keyboard
+  dismissible, and can't be suppressed by the browser.
+- Escape and a backdrop click dismiss the topmost dialog (running the same
+  cleanup as its Cancel button); with no dialog open, Escape closes an open
+  side panel.
+- Thumbnails load lazily and paging appends only the new page rather than
+  re-rendering everything already on screen.
+
+**A CSS trap worth remembering:** photo tiles get their height from
+`aspect-ratio` against a `1fr` grid column, which contributes *nothing* to
+an auto-sized grid row's intrinsic height. Rows then collapse to a few
+pixels and every row of photos overlaps the one above it, while the tiles
+themselves still measure correctly — so it looks like "the rows aren't tall
+enough to show the photo". `grid-auto-rows: max-content` forces a real
+content measurement against the resolved column width and is load-bearing
+in `.photo-grid`; don't remove it. (`align-items: start` alone does *not*
+fix this, and on its own is what triggers the overlap.)
 
 ---
 
@@ -259,8 +305,9 @@ decisions that would make adding them later painful.
 - Must run entirely locally with a single command; no external services
   required for core functionality.
 - Should comfortably handle a few hundred to low thousands of photos without
-  the UI becoming sluggish (thumbnails + pagination/lazy-loading where
-  needed).
+  the UI becoming sluggish: thumbnails rather than originals in every grid,
+  paged loading (60 at a time) that appends instead of re-rendering, and
+  `loading="lazy"` so off-screen tiles cost nothing until scrolled to.
 - Keep dependencies minimal and well-known (Flask/FastAPI, Pillow, SQLite via
   stdlib `sqlite3` or a lightweight ORM like SQLAlchemy — avoid heavy
   frameworks).

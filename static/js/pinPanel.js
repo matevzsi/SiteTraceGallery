@@ -1,11 +1,13 @@
 import { api, thumbUrl } from "./api.js";
-import { state, toast, showModal, hideModal } from "./state.js";
+import { state, toast, showModal, hideModal, formatDay, formatDate } from "./state.js";
+import { confirmDialog } from "./dialogs.js";
 import { svgEl, headingToXY, xyToHeading, clientPointToSvg } from "./compass.js";
 import { openPhotoModal } from "./photoModal.js";
 
 const panel = document.getElementById("pinPanel");
 const labelInput = document.getElementById("pinLabelInput");
 const categoryInput = document.getElementById("pinCategoryInput");
+const photoCountEl = document.getElementById("pinPhotoCount");
 const deleteBtn = document.getElementById("pinDeleteBtn");
 const closeBtn = document.getElementById("pinPanelCloseBtn");
 const compass = document.getElementById("pinCompass");
@@ -51,31 +53,48 @@ async function refreshTimeline() {
   onChangeCallback?.onOverlayUpdate?.(currentPhotos, directionFilter);
 }
 
-// Gallery: large photos, no text — chronological order (oldest first) is
-// still the sort, it's just no longer spelled out as a date label. Open a
-// photo for its date/direction/caption detail instead of showing it here.
+// Gallery: large square tiles in chronological order (oldest first, so it
+// reads like progress over time). Only the date rides along as an overlay
+// caption — open a photo for its direction/caption detail.
 function renderTimeline() {
   timelineEl.innerHTML = "";
   const visible = currentPhotos.filter(
     (p) => !directionFilter || (p.direction_deg != null && isWithinArc(p.direction_deg, directionFilter.center, directionFilter.width))
   );
+  photoCountEl.textContent = directionFilter
+    ? `${visible.length} of ${currentPhotos.length} photos`
+    : `${currentPhotos.length} photo${currentPhotos.length === 1 ? "" : "s"}`;
+
   if (visible.length === 0) {
     const empty = document.createElement("p");
-    empty.className = "timeline-empty";
+    empty.className = "grid-empty";
     empty.textContent = directionFilter ? "No photos in that direction." : "No photos assigned to this pin yet.";
     timelineEl.appendChild(empty);
     return;
   }
+  const frag = document.createDocumentFragment();
   for (const photo of visible) {
     const item = document.createElement("div");
-    item.className = "timeline-item";
+    item.className = "photo-card";
+    item.title = formatDate(photo.taken_at);
+
     const img = document.createElement("img");
+    img.className = "photo-thumb";
     img.src = thumbUrl(photo.thumbnail_path);
     img.alt = "";
+    img.loading = "lazy";
+    img.decoding = "async";
     item.appendChild(img);
+
+    const caption = document.createElement("span");
+    caption.className = "photo-caption";
+    caption.textContent = formatDay(photo.taken_at);
+    item.appendChild(caption);
+
     item.addEventListener("click", () => openPhotoModal(photo.id, { onSaved: refreshTimeline }));
-    timelineEl.appendChild(item);
+    frag.appendChild(item);
   }
+  timelineEl.appendChild(frag);
 }
 
 function isWithinArc(deg, center, width) {
@@ -197,7 +216,12 @@ categoryInput.addEventListener("change", saveLabelCategory);
 
 deleteBtn.addEventListener("click", async () => {
   if (!currentPin) return;
-  if (!confirm(`Delete pin "${currentPin.label || "(unlabeled)"}"? This cannot be undone.`)) return;
+  const ok = await confirmDialog({
+    title: "Delete pin",
+    message: `Delete "${currentPin.label || "(unlabeled pin)"}"? This cannot be undone.`,
+    confirmLabel: "Delete pin",
+  });
+  if (!ok) return;
   try {
     await api.deletePin(currentPin.id);
     await afterPinDeleted();
@@ -236,6 +260,12 @@ document.getElementById("pinDeleteCancelBtn").addEventListener("click", () => hi
 async function afterPinDeleted() {
   toast("Pin deleted");
   closePinPanel();
+  // photos that were on this pin are back in (or gone from) the inbox, so
+  // the unassigned panel and its topbar count need to catch up
+  document.dispatchEvent(new CustomEvent("photos-assigned"));
 }
 
 closeBtn.addEventListener("click", closePinPanel);
+document.addEventListener("escape-pressed", () => {
+  if (!panel.classList.contains("hidden")) closePinPanel();
+});

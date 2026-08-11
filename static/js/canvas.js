@@ -1,5 +1,6 @@
 import { api, floorplanUrl } from "./api.js";
 import { state, toast } from "./state.js";
+import { promptPinLabel } from "./dialogs.js";
 import { getTransform } from "./layerTransform.js";
 import { svgEl, headingToXY, xyToHeading } from "./compass.js";
 import { openPinPanel, closePinPanel } from "./pinPanel.js";
@@ -35,6 +36,9 @@ let panY = 0;
 function applyViewportTransform() {
   if (viewportEl) viewportEl.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
   updatePinCounterScale();
+  // the direction arrows are drawn in content pixels, so their on-screen
+  // length has to be recomputed against the new zoom to stay constant
+  renderDirectionOverlay(overlayPhotos, overlayFilter);
 }
 
 // Pin markers (and their label/arrow) live inside the zoomed viewport, so
@@ -61,6 +65,21 @@ function resetView() {
   applyViewportTransform();
 }
 
+/** Zoom by a step, anchored on the middle of the visible canvas (the
+ *  button equivalent of a wheel tick under the cursor). */
+function zoomByStep(factor) {
+  if (!getSitePlan()) return;
+  const mx = container.clientWidth / 2;
+  const my = container.clientHeight / 2;
+  const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom * factor));
+  const contentX = (mx - panX) / zoom;
+  const contentY = (my - panY) / zoom;
+  panX = mx - contentX * newZoom;
+  panY = my - contentY * newZoom;
+  zoom = newZoom;
+  applyViewportTransform();
+}
+
 // CSS aspect-ratio doesn't reliably size a box within a flex row when that
 // box has no in-flow content (every layer here is position:absolute for
 // pan/zoom), so sizing is computed directly instead. Width always fills the
@@ -72,7 +91,11 @@ let lastSiteAspect = null;
 function sizeContainerToStage(aspect) {
   lastSiteAspect = aspect;
   const stage = container.parentElement;
-  const w = stage.clientWidth;
+  // clientWidth includes the stage's padding; sizing to it would overflow
+  // and get clamped by max-width, leaving the height (derived from the
+  // unclamped width) slightly too large and the plan subtly stretched
+  const cs = getComputedStyle(stage);
+  const w = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
   const h = w / aspect;
   container.style.width = w + "px";
   container.style.height = h + "px";
@@ -93,9 +116,16 @@ export function populateFloorplanSelect() {
   for (const fp of state.floorplans) {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "nav-btn" + (fp.is_site_plan ? " site-plan-tab" : "");
+    btn.className = "btn tab-btn";
     btn.classList.toggle("active", fp.id === state.activeFloorplanId);
-    btn.textContent = fp.is_site_plan ? `${fp.name} (site plan)` : fp.name;
+    btn.setAttribute("aria-pressed", String(fp.id === state.activeFloorplanId));
+    btn.append(fp.name);
+    if (fp.is_site_plan) {
+      const tag = document.createElement("span");
+      tag.className = "tab-tag";
+      tag.textContent = "site";
+      btn.appendChild(tag);
+    }
     btn.addEventListener("click", () => selectFloorplan(fp.id));
     floorplanTabs.appendChild(btn);
   }
@@ -236,6 +266,12 @@ function renderPins() {
       arrow.style.transform = `rotate(${pin.indicator_direction_deg}deg)`;
       el.appendChild(arrow);
     }
+    if (pin.photo_count) {
+      const count = document.createElement("span");
+      count.className = "pin-count";
+      count.textContent = pin.photo_count > 99 ? "99+" : String(pin.photo_count);
+      el.appendChild(count);
+    }
     if (pin.label) {
       const label = document.createElement("div");
       label.className = "pin-label";
@@ -246,8 +282,63 @@ function renderPins() {
       e.stopPropagation();
       onPinClick(pin);
     });
+    attachPinDropTarget(el, pin);
     pinsLayerEl.appendChild(el);
   }
+}
+
+// --- drag photos onto a pin to assign them ----------------------------
+// The drag payload is carried in state.draggingPhotoIds (see state.js):
+// dragenter/dragover can't read dataTransfer, and the marker needs to know
+// it's a valid target before the drop happens.
+
+function attachPinDropTarget(el, pin) {
+  // both dragenter and dragover matter: dragover only fires while the
+  // pointer keeps moving, so a cursor that comes to rest on the marker
+  // would never light it up if the highlight hung off dragover alone.
+  const markTarget = (e) => {
+    if (!state.draggingPhotoIds?.length) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    el.classList.add("drop-target");
+  };
+  el.addEventListener("dragenter", markTarget);
+  el.addEventListener("dragover", markTarget);
+  // dragleave also fires when the pointer crosses into a descendant of the
+  // marker (its count/label), which would flicker the highlight off right
+  // where the user is aiming — only drop it when the drag really left.
+  el.addEventListener("dragleave", (e) => {
+    if (e.relatedTarget && el.contains(e.relatedTarget)) return;
+    el.classList.remove("drop-target");
+  });
+  el.addEventListener("drop", async (e) => {
+    el.classList.remove("drop-target");
+    const ids = readDraggedPhotoIds(e);
+    if (!ids.length) return;
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      const res = await api.bulkAssign(ids, pin.id);
+      toast(`Assigned ${res.updated} photo(s) to "${pin.label || "pin"}"`);
+      document.dispatchEvent(new CustomEvent("photos-assigned"));
+      await loadPinsAndRender();
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+}
+
+function readDraggedPhotoIds(e) {
+  const raw = e.dataTransfer?.getData("application/x-sitetrace-photos");
+  if (raw) {
+    try {
+      const ids = JSON.parse(raw);
+      if (Array.isArray(ids) && ids.length) return ids;
+    } catch {
+      /* fall through to the in-page state below */
+    }
+  }
+  return state.draggingPhotoIds || [];
 }
 
 function renderDirectionOverlay(photos = null, filter = null) {
@@ -263,18 +354,22 @@ function renderDirectionOverlay(photos = null, filter = null) {
   overlaySvg.setAttribute("height", container.clientHeight);
   overlaySvg.setAttribute("viewBox", `0 0 ${container.clientWidth} ${container.clientHeight}`);
 
+  // drawn in content pixels inside the zoomed viewport, so divide by zoom
+  // to keep the arrows the same on-screen size as the (counter-scaled) pins
+  const len = 30 / zoom;
   for (const photo of photos) {
     if (photo.direction_deg === null || photo.direction_deg === undefined) continue;
     const inFilter = !filter || isWithinArc(photo.direction_deg, filter.center, filter.width);
-    const { dx, dy } = headingToXY(photo.direction_deg, 26);
+    const { dx, dy } = headingToXY(photo.direction_deg, len);
     const line = svgEl("line", {
       x1: cx,
       y1: cy,
       x2: cx + dx,
       y2: cy + dy,
-      stroke: inFilter ? "#1e6fb5" : "#b8b8b3",
-      "stroke-width": inFilter ? 2 : 1.5,
+      stroke: inFilter ? "var(--pin-selected)" : "var(--ink-3)",
+      "stroke-width": (inFilter ? 2.5 : 1.5) / zoom,
       "stroke-linecap": "round",
+      opacity: inFilter ? 0.95 : 0.5,
     });
     overlaySvg.appendChild(line);
   }
@@ -368,9 +463,11 @@ function onContainerMouseUp(e) {
 }
 
 document.getElementById("resetViewBtn").addEventListener("click", resetView);
+document.getElementById("zoomInBtn").addEventListener("click", () => zoomByStep(1.35));
+document.getElementById("zoomOutBtn").addEventListener("click", () => zoomByStep(1 / 1.35));
 
 async function createPinAt(floorplanId, x, y) {
-  const label = prompt("Pin label (e.g. Kitchen, Southeast corner):", "");
+  const label = await promptPinLabel();
   if (label === null) return;
   try {
     const pin = await api.createPin(floorplanId, { x, y, label: label.trim() });

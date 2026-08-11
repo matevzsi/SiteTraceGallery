@@ -1,5 +1,5 @@
 import { api, photoUrl } from "./api.js";
-import { toast, showModal, hideModal, formatDate } from "./state.js";
+import { toast, showModal, hideModal, onModalDismiss, formatDate } from "./state.js";
 import { svgEl, headingToXY, xyToHeading, clientPointToSvg } from "./compass.js";
 
 const img = document.getElementById("photoModalImg");
@@ -157,3 +157,4 @@ function closePhotoModal() {
   currentPhoto = null;
 }
 closeBtn.addEventListener("click", closePhotoModal);
+onModalDismiss("photoModal", closePhotoModal);
