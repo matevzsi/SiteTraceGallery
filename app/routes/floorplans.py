@@ -116,6 +116,51 @@ def update_floorplan(floorplan_id):
     return row_to_dict(row)
 
 
+@bp.post("/<int:floorplan_id>/image")
+def replace_floorplan_image(floorplan_id):
+    """Swap the underlying image for an existing floorplan row (including
+    the site plan) without disturbing its pins/photos or, for a regular
+    layer, its offset/scale/rotation — those stay as a starting point the
+    user can nudge afterward if the new image doesn't line up exactly."""
+    db = get_db()
+    row = db.execute("SELECT * FROM floorplans WHERE id = ?", (floorplan_id,)).fetchone()
+    if not row:
+        return error("floorplan not found", 404)
+
+    image = request.files.get("image")
+    if not image or not image.filename:
+        return error("image file is required")
+    ext = os.path.splitext(image.filename)[1].lower()
+    if ext not in ALLOWED_EXT:
+        return error(f"unsupported image type: {ext}")
+
+    floorplans_dir = current_app.config["FLOORPLANS_DIR"]
+    safe_name = secure_filename(image.filename) or "floorplan"
+    dest_name = _unique_name(floorplans_dir, safe_name)
+    dest_path = os.path.join(floorplans_dir, dest_name)
+    image.save(dest_path)
+    width, height = get_image_dimensions(dest_path)
+
+    fields = {"image_path": dest_name, "width_px": width, "height_px": height}
+    name = (request.form.get("name") or "").strip()
+    if name:
+        fields["name"] = name
+
+    set_clause = ", ".join(f"{k} = ?" for k in fields)
+    db.execute(f"UPDATE floorplans SET {set_clause} WHERE id = ?", (*fields.values(), floorplan_id))
+    db.commit()
+
+    old_path = os.path.join(floorplans_dir, row["image_path"])
+    if os.path.abspath(old_path) != os.path.abspath(dest_path):
+        try:
+            os.remove(old_path)
+        except OSError:
+            pass
+
+    updated = db.execute("SELECT * FROM floorplans WHERE id = ?", (floorplan_id,)).fetchone()
+    return row_to_dict(updated)
+
+
 @bp.delete("/<int:floorplan_id>")
 def delete_floorplan(floorplan_id):
     db = get_db()

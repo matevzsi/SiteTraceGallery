@@ -12,12 +12,31 @@ const clearSelectionBtn = document.getElementById("clearSelectionBtn");
 const assignSelectedBtn = document.getElementById("assignSelectedBtn");
 const loadMoreBtn = document.getElementById("loadMoreBtn");
 const countBadge = document.getElementById("unassignedCount");
+const zoomInBtn = document.getElementById("gridZoomInBtn");
+const zoomOutBtn = document.getElementById("gridZoomOutBtn");
+
+const GRID_COL_MIN = 70;
+const GRID_COL_MAX = 260;
+const GRID_COL_STEP = 20;
 
 const selected = new Set();
 let page = 1;
 let hasMore = false;
 let loadedPhotos = [];
 let awaitingAssignResult = false;
+let gridColPx = 110;
+
+function applyGridZoom() {
+  grid.style.setProperty("--grid-col", gridColPx + "px");
+}
+zoomInBtn.addEventListener("click", () => {
+  gridColPx = Math.min(GRID_COL_MAX, gridColPx + GRID_COL_STEP);
+  applyGridZoom();
+});
+zoomOutBtn.addEventListener("click", () => {
+  gridColPx = Math.max(GRID_COL_MIN, gridColPx - GRID_COL_STEP);
+  applyGridZoom();
+});
 
 export function openUnassignedPanel() {
   panel.classList.remove("hidden");
@@ -56,14 +75,20 @@ function renderGrid() {
     const card = document.createElement("div");
     card.className = "photo-card" + (selected.has(photo.id) ? " selected" : "");
 
+    const selectWrap = document.createElement("label");
+    selectWrap.className = "photo-select-wrap";
+    // stopPropagation here catches both the wrap's own click and the
+    // synthetic click the browser forwards to the checkbox, before either
+    // reaches the card's "open photo modal" handler.
+    selectWrap.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleSelect(photo.id, card, checkbox);
+    });
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.className = "photo-select";
     checkbox.checked = selected.has(photo.id);
-    checkbox.addEventListener("click", (e) => {
-      e.stopPropagation();
-      toggleSelect(photo.id, card, checkbox);
-    });
+    selectWrap.appendChild(checkbox);
 
     const img = document.createElement("img");
     img.src = thumbUrl(photo.thumbnail_path);
@@ -73,8 +98,11 @@ function renderGrid() {
     meta.className = "photo-meta";
     meta.textContent = formatDate(photo.taken_at);
 
-    card.appendChild(checkbox);
+    // img must come before selectWrap in DOM order — later siblings paint
+    // (and hit-test) on top, and the absolutely-positioned selectWrap needs
+    // to sit above the normal-flow image, not be silently covered by it.
     card.appendChild(img);
+    card.appendChild(selectWrap);
     card.appendChild(meta);
 
     if (photo.direction_deg == null) {

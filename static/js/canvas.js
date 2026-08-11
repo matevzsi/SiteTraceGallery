@@ -8,6 +8,7 @@ const container = document.getElementById("planContainer");
 const emptyState = document.getElementById("emptyState");
 const floorplanSelect = document.getElementById("floorplanSelect");
 const layerEditBtn = document.getElementById("layerEditBtn");
+const replaceImageBtn = document.getElementById("replaceImageBtn");
 const layerEditControls = document.getElementById("layerEditControls");
 const layerOpacity = document.getElementById("layerOpacity");
 const assignBanner = document.getElementById("assignModeBanner");
@@ -33,6 +34,19 @@ let panY = 0;
 
 function applyViewportTransform() {
   if (viewportEl) viewportEl.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+  updatePinCounterScale();
+}
+
+// Pin markers (and their label/arrow) live inside the zoomed viewport, so
+// without this they'd visually grow/shrink with the map zoom like the
+// floor plan image does. Counter-scaling each marker by 1/zoom keeps them
+// a constant screen size — same trick map UIs use for POI pins.
+function updatePinCounterScale() {
+  if (!pinsLayerEl) return;
+  const s = 1 / zoom;
+  for (const el of pinsLayerEl.children) {
+    el.style.transform = `scale(${s})`;
+  }
 }
 
 function screenToContent(clientX, clientY) {
@@ -46,6 +60,30 @@ function resetView() {
   panY = 0;
   applyViewportTransform();
 }
+
+// CSS aspect-ratio doesn't reliably size a box within a flex row when that
+// box has no in-flow content (every layer here is position:absolute for
+// pan/zoom), so the "fill the available space without distorting the site
+// plan's aspect ratio" fit is computed directly instead — the same
+// contain-fit math object-fit:contain would do for a replaced element.
+let lastSiteAspect = null;
+function sizeContainerToStage(aspect) {
+  lastSiteAspect = aspect;
+  const stage = container.parentElement;
+  const stageW = stage.clientWidth;
+  const stageH = stage.clientHeight;
+  let w = stageW;
+  let h = w / aspect;
+  if (h > stageH) {
+    h = stageH;
+    w = h * aspect;
+  }
+  container.style.width = w + "px";
+  container.style.height = h + "px";
+}
+window.addEventListener("resize", () => {
+  if (lastSiteAspect) sizeContainerToStage(lastSiteAspect);
+});
 
 export function getSitePlan() {
   return state.floorplans.find((f) => f.is_site_plan) || null;
@@ -81,6 +119,7 @@ export async function selectFloorplan(id, opts = {}) {
   closePinPanel();
   const fp = getActiveFloorplan();
   layerEditBtn.disabled = !fp || fp.is_site_plan;
+  replaceImageBtn.disabled = !fp;
   setLayerEditMode(false);
   if (!opts.skipPopulate) populateFloorplanSelect();
   await loadPinsAndRender();
@@ -157,7 +196,7 @@ function render() {
   const fp = getActiveFloorplan();
 
   sitePlanImgEl.src = floorplanUrl(site.image_path);
-  container.style.aspectRatio = `${site.width_px} / ${site.height_px}`;
+  sizeContainerToStage(site.width_px / site.height_px);
 
   if (!fp || fp.is_site_plan) {
     wrapperEl.classList.add("hidden");
@@ -190,6 +229,7 @@ function renderPins() {
     el.className = "pin-marker" + (pin.id === state.selectedPinId ? " selected" : "");
     el.style.left = pin.x * 100 + "%";
     el.style.top = pin.y * 100 + "%";
+    el.style.transform = `scale(${1 / zoom})`;
     el.title = pin.label || "(unlabeled pin)";
 
     if (pin.indicator_direction_deg !== null && pin.indicator_direction_deg !== undefined) {

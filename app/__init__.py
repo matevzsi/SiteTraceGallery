@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from flask import Flask
@@ -15,12 +16,18 @@ def create_app(test_config: dict | None = None) -> Flask:
         static_folder=str(PROJECT_ROOT / "static"),
     )
 
+    # SITETRACE_DATA_DIR redirects the db + photos/floorplans/thumbnails to
+    # a separate directory, entirely independent of the real project data.
+    # Point it at a scratch folder when testing/developing so nothing ever
+    # touches the real database or photo library by accident.
+    data_dir = Path(os.environ["SITETRACE_DATA_DIR"]) if os.environ.get("SITETRACE_DATA_DIR") else PROJECT_ROOT
+
     app.config.from_mapping(
         SECRET_KEY="dev",  # single-user localhost tool — not security sensitive
-        DATABASE_PATH=str(PROJECT_ROOT / "sitetrace.db"),
-        FLOORPLANS_DIR=str(PROJECT_ROOT / "floorplans"),
-        PHOTOS_DIR=str(PROJECT_ROOT / "photos"),
-        THUMBNAILS_DIR=str(PROJECT_ROOT / "thumbnails"),
+        DATABASE_PATH=str(data_dir / "sitetrace.db"),
+        FLOORPLANS_DIR=str(data_dir / "floorplans"),
+        PHOTOS_DIR=str(data_dir / "photos"),
+        THUMBNAILS_DIR=str(data_dir / "thumbnails"),
         THUMBNAIL_MAX_PX=400,
         MAX_CONTENT_LENGTH=64 * 1024 * 1024,  # floor plan image uploads only
     )

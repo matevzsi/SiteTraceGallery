@@ -22,6 +22,8 @@ export const api = {
   listFloorplans: () => fetch("/api/floorplans").then(handle),
   createFloorplan: (formData) =>
     fetch("/api/floorplans", { method: "POST", body: formData }).then(handle),
+  replaceFloorplanImage: (id, formData) =>
+    fetch(`/api/floorplans/${id}/image`, { method: "POST", body: formData }).then(handle),
   updateFloorplan: (id, fields) =>
     fetch(`/api/floorplans/${id}`, {
       method: "PATCH",

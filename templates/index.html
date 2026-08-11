@@ -22,6 +22,7 @@
           <select id="floorplanSelect"></select>
         </label>
         <button id="addFloorplanBtn" type="button">+ Add floor plan</button>
+        <button id="replaceImageBtn" type="button" disabled>Replace image…</button>
         <button id="layerEditBtn" type="button" disabled>Layer edit mode</button>
         <button id="resetViewBtn" type="button" title="Reset zoom/pan">Reset view</button>
         <div id="layerEditControls" class="layer-edit-controls hidden">
@@ -35,10 +36,12 @@
         </div>
       </div>
 
-      <div id="planContainer" class="plan-container">
-        <div id="emptyState" class="empty-state hidden">
-          <p>No site plan yet. Upload one to get started.</p>
-          <button id="addSitePlanBtn" type="button">Upload site plan</button>
+      <div class="plan-stage">
+        <div id="planContainer" class="plan-container">
+          <div id="emptyState" class="empty-state hidden">
+            <p>No site plan yet. Upload one to get started.</p>
+            <button id="addSitePlanBtn" type="button">Upload site plan</button>
+          </div>
         </div>
       </div>
       <p class="hint">Click to drop a pin (or open an existing one). Drag to pan, scroll to zoom.</p>
@@ -54,6 +57,10 @@
       <button id="selectAllBtn" type="button">Select all</button>
       <button id="clearSelectionBtn" type="button">Clear selection</button>
       <button id="assignSelectedBtn" type="button" disabled>Assign selected to pin…</button>
+      <div class="grid-zoom">
+        <button id="gridZoomOutBtn" type="button" title="Smaller thumbnails">&minus;</button>
+        <button id="gridZoomInBtn" type="button" title="Bigger thumbnails">&plus;</button>
+      </div>
     </div>
     <div id="unassignedGrid" class="photo-grid"></div>
     <button id="loadMoreBtn" class="hidden" type="button">Load more</button>
