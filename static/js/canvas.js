@@ -63,21 +63,17 @@ function resetView() {
 
 // CSS aspect-ratio doesn't reliably size a box within a flex row when that
 // box has no in-flow content (every layer here is position:absolute for
-// pan/zoom), so the "fill the available space without distorting the site
-// plan's aspect ratio" fit is computed directly instead — the same
-// contain-fit math object-fit:contain would do for a replaced element.
+// pan/zoom), so sizing is computed directly instead. Width always fills the
+// full stage (so the map uses all available horizontal space); height
+// follows from the site plan's own aspect ratio undistorted, which can run
+// taller than the stage on a narrow/tall window — .plan-stage scrolls
+// vertically for that case rather than shrinking width to compensate.
 let lastSiteAspect = null;
 function sizeContainerToStage(aspect) {
   lastSiteAspect = aspect;
   const stage = container.parentElement;
-  const stageW = stage.clientWidth;
-  const stageH = stage.clientHeight;
-  let w = stageW;
-  let h = w / aspect;
-  if (h > stageH) {
-    h = stageH;
-    w = h * aspect;
-  }
+  const w = stage.clientWidth;
+  const h = w / aspect;
   container.style.width = w + "px";
   container.style.height = h + "px";
 }

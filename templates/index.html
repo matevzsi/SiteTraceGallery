@@ -9,7 +9,12 @@
 <body>
   <header class="topbar">
     <h1>SiteTrace</h1>
-    <div id="floorplanTabs" class="floorplan-tabs"></div>
+    <div class="floorplan-actions">
+      <button id="addFloorplanBtn" type="button">+ Add floor plan</button>
+      <button id="replaceImageBtn" type="button" disabled>Replace image…</button>
+      <button id="layerEditBtn" type="button" disabled>Layer edit mode</button>
+      <button id="resetViewBtn" type="button" title="Reset zoom/pan">Reset view</button>
+    </div>
     <nav>
       <button id="navUnassignedBtn" class="nav-btn" type="button">Show unassigned <span id="unassignedCount" class="badge">0</span></button>
       <button id="importBtn" class="nav-btn" type="button">Import photos…</button>
@@ -20,10 +25,6 @@
   <main>
     <section id="view-home">
       <div class="toolbar">
-        <button id="addFloorplanBtn" type="button">+ Add floor plan</button>
-        <button id="replaceImageBtn" type="button" disabled>Replace image…</button>
-        <button id="layerEditBtn" type="button" disabled>Layer edit mode</button>
-        <button id="resetViewBtn" type="button" title="Reset zoom/pan">Reset view</button>
         <div id="layerEditControls" class="layer-edit-controls hidden">
           <label>Opacity <input type="range" id="layerOpacity" min="0.1" max="1" step="0.05" value="0.75"></label>
           <span class="hint">Drag the image to move it, the corner handle to resize, the top handle to rotate.</span>
@@ -34,6 +35,8 @@
           <button id="assignModeCancelBtn" type="button">Cancel</button>
         </div>
       </div>
+
+      <div id="floorplanTabs" class="floorplan-tabs floorplan-tabs-centered"></div>
 
       <div class="plan-stage">
         <div id="planContainer" class="plan-container">
