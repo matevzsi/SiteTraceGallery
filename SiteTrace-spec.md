@@ -232,6 +232,21 @@ decisions that would make adding them later painful.
   to resize them, and a generously-sized click target around the selection
   checkbox. The shot date rides along as an overlay caption rather than a
   text row, so the tile stays exactly square at any thumbnail size.
+- Selected photos can also be **deleted** from the panel, behind a
+  confirmation that spells out what goes: SiteTrace's stored copy and
+  thumbnail. The originals in the imported-from folder are never touched
+  (the importer copies rather than moves), so a delete is undone by
+  re-importing that folder.
+- The list holds its scroll position as photos leave it. Working through a
+  long inbox means assigning or deleting in batches, and being thrown back
+  to the top after each one makes the job unusable. Photos that left are
+  removed from the grid in place rather than by re-rendering it; changes
+  that can *add* rows back (a photo unassigned from a pin) re-read the list
+  but restore the scroll offset afterwards.
+- Paging is by **offset, not page number**: rows disappear from this list
+  while the user works through it, which shifts every later row down. The
+  client asks for "the next row after however many I already hold", so
+  nothing gets skipped or duplicated after a batch of assignments.
 - Ability to reassign a photo to a different pin later, from a photo's
   detail view.
 
@@ -289,6 +304,16 @@ decisions that would make adding them later painful.
   side panel.
 - Thumbnails load lazily and paging appends only the new page rather than
   re-rendering everything already on screen.
+
+**A DOM trap worth remembering:** the photo tile's selection checkbox sits
+inside a `<label>` that provides a bigger hit area. Do not put the
+selection logic on a click handler on that label — clicking the label
+anywhere outside the checkbox makes the browser forward a synthetic click
+to the checkbox, which bubbles back through the label, so the handler runs
+twice and cancels itself out. Only hits landing exactly on the small circle
+would register, which looks like a flaky checkbox. Drive the state from the
+checkbox's own `change` event and use the label's click handler purely to
+stop propagation.
 
 **A CSS trap worth remembering:** photo tiles get their height from
 `aspect-ratio` against a `1fr` grid column, which contributes *nothing* to

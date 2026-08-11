@@ -402,7 +402,7 @@ function attachPinDropTarget(el, pin) {
     try {
       const res = await api.bulkAssign(ids, pin.id);
       toast(`Assigned ${res.updated} photo(s) to "${pin.label || "pin"}"`);
-      document.dispatchEvent(new CustomEvent("photos-assigned"));
+      document.dispatchEvent(new CustomEvent("photos-assigned", { detail: { removedIds: ids } }));
       await loadPinsAndRender();
     } catch (err) {
       toast(err.message, true);
@@ -563,10 +563,11 @@ async function createPinAt(floorplanId, x, y) {
 async function onPinClick(pin) {
   if (state.assignMode) {
     try {
-      const res = await api.bulkAssign(state.assignMode.photoIds, pin.id);
+      const ids = state.assignMode.photoIds;
+      const res = await api.bulkAssign(ids, pin.id);
       toast(`Assigned ${res.updated} photo(s) to "${pin.label || "pin"}"`);
       cancelAssignMode();
-      document.dispatchEvent(new CustomEvent("photos-assigned"));
+      document.dispatchEvent(new CustomEvent("photos-assigned", { detail: { removedIds: ids } }));
       await loadPinsAndRender();
     } catch (err) {
       toast(err.message, true);

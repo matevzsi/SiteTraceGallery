@@ -1,5 +1,6 @@
 import { api, thumbUrl } from "./api.js";
 import { state, toast, formatDay, formatDate } from "./state.js";
+import { confirmDialog } from "./dialogs.js";
 import { enterAssignMode } from "./canvas.js";
 import { openPhotoModal } from "./photoModal.js";
 
@@ -10,6 +11,7 @@ const grid = document.getElementById("unassignedGrid");
 const selectAllBtn = document.getElementById("selectAllBtn");
 const clearSelectionBtn = document.getElementById("clearSelectionBtn");
 const assignSelectedBtn = document.getElementById("assignSelectedBtn");
+const deleteSelectedBtn = document.getElementById("deleteSelectedBtn");
 const loadMoreBtn = document.getElementById("loadMoreBtn");
 const countBadge = document.getElementById("unassignedCount");
 const zoomInBtn = document.getElementById("gridZoomInBtn");
@@ -18,14 +20,15 @@ const zoomOutBtn = document.getElementById("gridZoomOutBtn");
 const GRID_COL_MIN = 70;
 const GRID_COL_MAX = 260;
 const GRID_COL_STEP = 25;
+const PAGE_SIZE = 60;
 
 const selected = new Set();
 const cardsByPhotoId = new Map();
-let page = 1;
 let hasMore = false;
 let loadedPhotos = [];
 let awaitingAssignResult = false;
 let gridColPx = 120;
+let savedScrollTop = 0;
 
 function applyGridZoom() {
   grid.style.setProperty("--grid-col", gridColPx + "px");
@@ -45,8 +48,12 @@ applyGridZoom();
 export function openUnassignedPanel() {
   panel.classList.remove("hidden");
   navBtn.classList.add("active");
+  // display:none drops the scroll offset, and the panel hides itself while
+  // the user picks a pin — put them back where they were reading
+  if (savedScrollTop) grid.scrollTop = savedScrollTop;
 }
 export function closeUnassignedPanel() {
+  savedScrollTop = grid.scrollTop;
   panel.classList.add("hidden");
   navBtn.classList.remove("active");
 }
@@ -62,13 +69,16 @@ document.addEventListener("escape-pressed", () => {
 
 export async function loadUnassigned(reset = true) {
   if (reset) {
-    page = 1;
     loadedPhotos = [];
     selected.clear();
     cardsByPhotoId.clear();
     grid.innerHTML = "";
+    savedScrollTop = 0;
   }
-  const res = await api.unassignedPhotos(page, 60);
+  // paging is by offset, not page number: photos leave this list as they're
+  // assigned or deleted, and "however many I already hold" is the only
+  // anchor that keeps pointing at the next unseen row
+  const res = await api.unassignedPhotos(loadedPhotos.length, PAGE_SIZE);
   loadedPhotos = loadedPhotos.concat(res.photos);
   hasMore = res.has_more;
   countBadge.textContent = String(res.total);
@@ -77,7 +87,63 @@ export async function loadUnassigned(reset = true) {
   appendCards(res.photos);
   renderEmptyState();
   loadMoreBtn.classList.toggle("hidden", !hasMore);
-  updateAssignButton();
+  updateSelectionButtons();
+}
+
+/** Drop photos that are no longer unassigned without rebuilding the grid,
+ *  so the list doesn't jump back to the top mid-triage. */
+function removeFromList(ids) {
+  const gone = new Set(ids);
+  for (const id of gone) {
+    cardsByPhotoId.get(id)?.remove();
+    cardsByPhotoId.delete(id);
+    selected.delete(id);
+  }
+  loadedPhotos = loadedPhotos.filter((p) => !gone.has(p.id));
+  renderEmptyState();
+  updateSelectionButtons();
+}
+
+/** Full re-read of everything currently on screen, for changes that can add
+ *  rows back (a photo unassigned from a pin), keeping the scroll offset. */
+let refreshing = false;
+async function refreshKeepingScroll() {
+  // saving in the photo modal fires both the onSaved callback and the
+  // photos-assigned event; one re-read is enough
+  if (refreshing) return;
+  refreshing = true;
+  const scroll = grid.scrollTop;
+  const held = Math.max(PAGE_SIZE, loadedPhotos.length);
+  const keepSelected = new Set(selected);
+
+  loadedPhotos = [];
+  selected.clear();
+  cardsByPhotoId.clear();
+  grid.innerHTML = "";
+
+  try {
+    while (loadedPhotos.length < held) {
+      const res = await api.unassignedPhotos(loadedPhotos.length, PAGE_SIZE);
+      loadedPhotos = loadedPhotos.concat(res.photos);
+      hasMore = res.has_more;
+      countBadge.textContent = String(res.total);
+      appendCards(res.photos);
+      if (!res.has_more || res.photos.length === 0) break;
+    }
+  } finally {
+    refreshing = false;
+  }
+
+  for (const id of keepSelected) {
+    if (!cardsByPhotoId.has(id)) continue;
+    selected.add(id);
+    syncCard(id);
+  }
+  renderEmptyState();
+  loadMoreBtn.classList.toggle("hidden", !hasMore);
+  updateSelectionButtons();
+  grid.scrollTop = scroll;
+  savedScrollTop = scroll;
 }
 
 function renderEmptyState() {
@@ -137,16 +203,19 @@ function buildCard(photo) {
   checkbox.className = "photo-select";
   checkbox.checked = selected.has(photo.id);
   selectWrap.appendChild(checkbox);
-  // stopPropagation catches both the wrap's own click and the synthetic
-  // click the browser forwards to the checkbox, before either reaches the
-  // card's "open photo modal" handler.
-  selectWrap.addEventListener("click", (e) => {
-    e.stopPropagation();
-    toggleSelect(photo.id);
-  });
+  // The selection state follows the checkbox's own change event, not a click
+  // handler on the label: clicking the label anywhere outside the checkbox
+  // makes the browser forward a synthetic click to the checkbox, which
+  // bubbles back through the label — a click handler there would fire twice
+  // and cancel itself out, so only hits landing exactly on the small circle
+  // would register.
+  checkbox.addEventListener("change", () => setSelected(photo.id, checkbox.checked));
+  // ...and swallow the click either way, so it never reaches the card's
+  // "open photo modal" handler.
+  selectWrap.addEventListener("click", (e) => e.stopPropagation());
   card.appendChild(selectWrap);
 
-  card.addEventListener("click", () => openPhotoModal(photo.id, { onSaved: () => loadUnassigned() }));
+  card.addEventListener("click", () => openPhotoModal(photo.id, { onSaved: refreshKeepingScroll }));
   card.addEventListener("dragstart", (e) => onCardDragStart(e, photo));
   card.addEventListener("dragend", onCardDragEnd);
 
@@ -180,11 +249,11 @@ function onCardDragEnd() {
   document.body.classList.remove("dragging-photos");
 }
 
-function toggleSelect(photoId) {
-  if (selected.has(photoId)) selected.delete(photoId);
-  else selected.add(photoId);
+function setSelected(photoId, on) {
+  if (on) selected.add(photoId);
+  else selected.delete(photoId);
   syncCard(photoId);
-  updateAssignButton();
+  updateSelectionButtons();
 }
 
 function syncCard(photoId) {
@@ -196,28 +265,26 @@ function syncCard(photoId) {
   if (box) box.checked = on;
 }
 
-function updateAssignButton() {
-  assignSelectedBtn.disabled = selected.size === 0;
-  assignSelectedBtn.textContent = selected.size
-    ? `Assign ${selected.size} to pin…`
-    : "Assign selected to pin…";
+function updateSelectionButtons() {
+  const n = selected.size;
+  assignSelectedBtn.disabled = n === 0;
+  assignSelectedBtn.textContent = n ? `Assign ${n} to pin…` : "Assign selected to pin…";
+  deleteSelectedBtn.disabled = n === 0;
+  deleteSelectedBtn.title = n ? `Delete ${n} selected photo${n === 1 ? "" : "s"}` : "Delete selected photos";
 }
 
 selectAllBtn.addEventListener("click", () => {
   for (const photo of loadedPhotos) selected.add(photo.id);
   for (const id of cardsByPhotoId.keys()) syncCard(id);
-  updateAssignButton();
+  updateSelectionButtons();
 });
 clearSelectionBtn.addEventListener("click", () => {
   const wasSelected = Array.from(selected);
   selected.clear();
   for (const id of wasSelected) syncCard(id);
-  updateAssignButton();
+  updateSelectionButtons();
 });
-loadMoreBtn.addEventListener("click", () => {
-  page += 1;
-  loadUnassigned(false);
-});
+loadMoreBtn.addEventListener("click", () => loadUnassigned(false));
 assignSelectedBtn.addEventListener("click", () => {
   if (selected.size === 0) return;
   enterAssignMode(Array.from(selected));
@@ -226,8 +293,45 @@ assignSelectedBtn.addEventListener("click", () => {
   toast("Click a pin on the floor plan to assign the selected photos.");
 });
 
-document.addEventListener("photos-assigned", () => {
-  loadUnassigned();
+deleteSelectedBtn.addEventListener("click", async () => {
+  const ids = Array.from(selected);
+  if (ids.length === 0) return;
+  const n = ids.length;
+  const ok = await confirmDialog({
+    title: `Delete ${n} photo${n === 1 ? "" : "s"}?`,
+    message:
+      `SiteTrace's copy and thumbnail are removed. The original file${n === 1 ? "" : "s"} in the folder ` +
+      `you imported from ${n === 1 ? "is" : "are"} untouched, so re-importing that folder brings ` +
+      `${n === 1 ? "it" : "them"} back.`,
+    confirmLabel: `Delete ${n} photo${n === 1 ? "" : "s"}`,
+  });
+  if (!ok) return;
+  try {
+    const res = await api.bulkDeletePhotos(ids);
+    removeFromList(ids);
+    countBadge.textContent = String(Math.max(0, Number(countBadge.textContent) - res.deleted));
+    toast(`Deleted ${res.deleted} photo${res.deleted === 1 ? "" : "s"}`);
+  } catch (err) {
+    toast(err.message, true);
+    await refreshKeepingScroll();
+  }
+});
+
+// detail.removedIds means "these left the inbox" — drop just those cards and
+// leave the scroll position alone. Without it (a photo unassigned back into
+// the inbox, a pin deleted) the list has to be re-read, but still without
+// throwing the user back to the top.
+document.addEventListener("photos-assigned", async (e) => {
+  const removedIds = e.detail?.removedIds;
+  if (removedIds?.length) {
+    removeFromList(removedIds);
+    const res = await api.unassignedPhotos(0, 1);
+    countBadge.textContent = String(res.total);
+    hasMore = loadedPhotos.length < res.total;
+    loadMoreBtn.classList.toggle("hidden", !hasMore);
+  } else {
+    await refreshKeepingScroll();
+  }
   if (awaitingAssignResult) {
     awaitingAssignResult = false;
     openUnassignedPanel();

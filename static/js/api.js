@@ -54,8 +54,8 @@ export const api = {
     }).then(handle),
 
   // photos
-  unassignedPhotos: (page = 1, pageSize = 60) =>
-    fetch(`/api/photos/unassigned?page=${page}&page_size=${pageSize}`).then(handle),
+  unassignedPhotos: (offset = 0, limit = 60) =>
+    fetch(`/api/photos/unassigned?offset=${offset}&page_size=${limit}`).then(handle),
   pinPhotos: (pinId) => fetch(`/api/pins/${pinId}/photos`).then(handle),
   getPhoto: (id) => fetch(`/api/photos/${id}`).then(handle),
   updatePhoto: (id, fields) =>
@@ -69,6 +69,13 @@ export const api = {
       method: "POST",
       headers: JSON_HEADERS,
       body: JSON.stringify({ photo_ids: photoIds, pin_id: pinId }),
+    }).then(handle),
+  deletePhoto: (id) => fetch(`/api/photos/${id}`, { method: "DELETE" }).then(handle),
+  bulkDeletePhotos: (photoIds) =>
+    fetch(`/api/photos/bulk-delete`, {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ photo_ids: photoIds }),
     }).then(handle),
   startImport: (sourceDir) =>
     fetch(`/api/photos/import`, {

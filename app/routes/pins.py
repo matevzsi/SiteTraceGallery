@@ -1,9 +1,7 @@
-import os
-
-from flask import Blueprint, current_app, request
+from flask import Blueprint, request
 
 from ..db import get_db
-from .helpers import error, row_to_dict, rows_to_list
+from .helpers import error, remove_photo_files, row_to_dict, rows_to_list
 
 bp = Blueprint("pins", __name__, url_prefix="/api")
 
@@ -125,22 +123,10 @@ def delete_pin(pin_id):
     if photo_count > 0 and decision == "delete":
         photos = db.execute("SELECT * FROM photos WHERE pin_id = ?", (pin_id,)).fetchall()
         for p in photos:
-            _remove_photo_files(p)
+            remove_photo_files(p)
         db.execute("DELETE FROM photos WHERE pin_id = ?", (pin_id,))
     # decision == "unassign" needs no action: ON DELETE SET NULL handles it
 
     db.execute("DELETE FROM pins WHERE id = ?", (pin_id,))
     db.commit()
     return "", 204
-
-
-def _remove_photo_files(photo_row):
-    for cfg_key, filename in (
-        ("PHOTOS_DIR", photo_row["file_path"]),
-        ("THUMBNAILS_DIR", photo_row["thumbnail_path"]),
-    ):
-        path = os.path.join(current_app.config[cfg_key], filename)
-        try:
-            os.remove(path)
-        except OSError:
-            pass
