@@ -10,6 +10,7 @@ const captionEl = document.getElementById("photoModalCaption");
 const directionLabel = document.getElementById("photoModalDirectionLabel");
 const dial = document.getElementById("photoDial");
 const setDirectionBtn = document.getElementById("photoDialSetBtn");
+const setDirectionNextBtn = document.getElementById("photoDialSetNextBtn");
 const saveBtn = document.getElementById("photoModalSaveBtn");
 const closeBtn = document.getElementById("photoModalCloseBtn");
 
@@ -37,6 +38,8 @@ export async function openPhotoModal(photoId, { onSaved } = {}) {
   confirmed = photo.direction_deg != null;
   renderDial();
   updateDirectionLabel();
+  // no pin means no gallery to walk through
+  setDirectionNextBtn.disabled = !photo.pin_id;
 
   showModal("photoModal");
 }
@@ -126,17 +129,54 @@ function updateFromEvent(e) {
 
 setDirectionBtn.addEventListener("click", async () => {
   if (!currentPhoto) return;
+  if (await saveDirection()) toast("Direction saved");
+});
+
+// Tagging headings is a repetitive pass over a pin's photos, so this saves
+// and pulls in the next one still missing a direction without a round trip
+// through the gallery. Wraps around the list, since the photo you started
+// from isn't necessarily the first.
+setDirectionNextBtn.addEventListener("click", async () => {
+  if (!currentPhoto) return;
+  const pinId = currentPhoto.pin_id;
+  const fromId = currentPhoto.id;
+  const carryOnSaved = onSavedCallback;
+  if (!(await saveDirection())) return;
+
+  const next = await findNextUndirected(pinId, fromId);
+  if (!next) {
+    toast("Direction saved — every photo at this pin has one now");
+    return;
+  }
+  await openPhotoModal(next.id, { onSaved: carryOnSaved });
+});
+
+async function saveDirection() {
   try {
-    const updated = await api.updatePhoto(currentPhoto.id, { direction_deg: pendingDeg });
-    currentPhoto = updated;
+    currentPhoto = await api.updatePhoto(currentPhoto.id, { direction_deg: pendingDeg });
     confirmed = true;
     updateDirectionLabel();
-    toast("Direction saved");
     onSavedCallback?.();
+    // the pin's marker draws a ray per heading, so it has to re-read them
+    document.dispatchEvent(new CustomEvent("pin-directions-changed"));
+    return true;
   } catch (err) {
     toast(err.message, true);
+    return false;
   }
-});
+}
+
+async function findNextUndirected(pinId, afterPhotoId) {
+  if (!pinId) return null;
+  try {
+    const { photos } = await api.pinPhotos(pinId); // gallery order: oldest first
+    const idx = photos.findIndex((p) => p.id === afterPhotoId);
+    const fromHere = idx === -1 ? photos : [...photos.slice(idx + 1), ...photos.slice(0, idx)];
+    return fromHere.find((p) => p.direction_deg == null) || null;
+  } catch {
+    return null;
+  }
+}
 
 saveBtn.addEventListener("click", async () => {
   if (!currentPhoto) return;

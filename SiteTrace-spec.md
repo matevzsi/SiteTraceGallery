@@ -171,6 +171,13 @@ decisions that would make adding them later painful.
 - Its image can be replaced later without disturbing that floor plan's pins
   or photo assignments (offset/scale/rotation are kept as-is, adjustable
   afterward if the new image doesn't line up).
+- A level can be removed. Its pins go with it and its image file is deleted,
+  but no photo ever is: `photos.pin_id` is `ON DELETE SET NULL`, so anything
+  assigned to it lands back in the unassigned inbox, and the confirmation
+  says so with the counts. The site plan is refused while other levels
+  exist — every other layer's offset/scale/rotation is expressed against it,
+  so removing it would leave them with no reference frame; once it's the
+  only one left it can go, returning the app to its empty state.
 - Support multiple floor plans (multiple levels + optionally a site/exterior
   plan).
 - Switch between floor plans via a segmented row of toggle buttons floating
@@ -207,11 +214,19 @@ decisions that would make adding them later painful.
   reposition. The drag is computed in the layer's own normalized space, so
   it stays true under the layer's scale and rotation as well as map
   pan/zoom.
-- Render pins as markers on the floor plan; each pin shows a small direction
-  indicator based on the most recent photo's heading that has one set (or an
-  average — pick a sensible simple default), and the number of photos
-  assigned to it. Pins, their labels and the direction arrows hold a
-  constant screen size regardless of map zoom.
+- Render pins as markers on the floor plan carrying the number of photos
+  assigned to them and a **fan of every direction those photos were taken
+  in** — not just the most recent one, which said nothing about coverage.
+  Headings are bucketed (15°) so a pin holding hundreds of photos still
+  ships a handful of numbers and draws a readable fan; the most recent
+  heading keeps a heavier ray so the latest look stays legible in it.
+- The fan sits in its own box **below** the pin icon. Radiating it from the
+  pin's own centre — which is what a per-photo arrow overlay drawn on top of
+  the markers used to do — put rays across the icon, its photo count and the
+  label underneath. There is no separate direction overlay: when the pin's
+  gallery has an angle filter active, rays outside the wedge dim instead.
+- Pins, their labels and their direction fans hold a constant screen size
+  regardless of map zoom.
 
 ### 3. Photo import
 - Bulk import from a local folder: the user provides a folder path on the
@@ -274,6 +289,13 @@ decisions that would make adding them later painful.
   and must be confirmed manually before it's saved — dragging alone doesn't
   persist anything, so a photo never silently ends up with a guessed
   heading.
+- Alongside "Set direction", a **"Set direction and next image"** button
+  saves and immediately loads the next photo at that pin still missing a
+  heading (wrapping around the gallery, since the starting photo isn't
+  necessarily the first). Tagging headings is a repetitive pass over a pin's
+  photos, and going back out to the gallery between each one is most of the
+  work. It reports when nothing is left to tag, and is unavailable for
+  inbox photos, which have no pin gallery to walk.
 
 ### 6. Timeline view
 - Click a pin → open a gallery of all photos assigned to that pin (right
@@ -289,6 +311,13 @@ decisions that would make adding them later painful.
   assigned photos were taken from, and a draggable pie-wedge angle filter
   that narrows the gallery to photos taken within that direction range. The
   compass block is collapsible so it doesn't eat gallery space when unused.
+- A **"Show only unassigned"** checkbox directly above the gallery narrows
+  it to photos with no direction set — the working set for a tagging pass,
+  paired with "Set direction and next image". It overrides the wedge filter
+  rather than combining with it (filtering *by* direction can't mean
+  anything among photos that have none), stays on across pins so a pass can
+  run pin to pin, and keeps a "N of M photos" readout beside it so a
+  filtered gallery never looks like an empty pin.
 
 ### 7. Basic navigation
 - Top bar: app title, floor plan management actions (add / replace image /
@@ -321,6 +350,11 @@ decisions that would make adding them later painful.
   side panel.
 - Thumbnails load lazily and paging appends only the new page rather than
   re-rendering everything already on screen.
+- Static assets are served `no-cache` and templates auto-reload. On a
+  localhost tool the bandwidth is free, and a browser holding a cached
+  `style.css` or JS module against freshly changed markup renders a
+  half-updated UI that looks exactly like a bug — the new JS emitting
+  elements the old CSS has never heard of.
 
 **A DOM trap worth remembering:** the photo tile's selection checkbox sits
 inside a `<label>` that provides a bigger hit area. Do not put the

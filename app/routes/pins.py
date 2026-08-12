@@ -5,6 +5,12 @@ from .helpers import error, remove_photo_files, row_to_dict, rows_to_list
 
 bp = Blueprint("pins", __name__, url_prefix="/api")
 
+# Pin markers show a fan of every direction photographed from that spot.
+# Headings are rounded into buckets this wide so the payload (and the fan)
+# stay small no matter how many photos the pin holds.
+DIRECTION_BUCKET_DEG = 15
+DIRECTION_BUCKETS = 360 // DIRECTION_BUCKET_DEG
+
 
 @bp.get("/pins")
 def list_all_pins():
@@ -33,14 +39,27 @@ def list_pins(floorplan_id):
                (SELECT ph.direction_deg FROM photos ph
                  WHERE ph.pin_id = p.id AND ph.direction_deg IS NOT NULL
                  ORDER BY ph.taken_at DESC LIMIT 1) AS indicator_direction_deg,
+               -- every heading photographed from this pin, bucketed to 15°
+               -- so a pin with 200 photos still ships a handful of numbers
+               -- and draws a readable fan rather than 200 stacked arrows
+               (SELECT GROUP_CONCAT(DISTINCT CAST(ROUND(ph.direction_deg / ?) AS INTEGER) % ?)
+                  FROM photos ph
+                 WHERE ph.pin_id = p.id AND ph.direction_deg IS NOT NULL) AS direction_buckets,
                (SELECT COUNT(*) FROM photos ph WHERE ph.pin_id = p.id) AS photo_count
         FROM pins p
         WHERE p.floorplan_id = ?
         ORDER BY p.created_at ASC
         """,
-        (floorplan_id,),
+        (DIRECTION_BUCKET_DEG, DIRECTION_BUCKETS, floorplan_id),
     ).fetchall()
-    return {"pins": rows_to_list(rows)}
+
+    pins = rows_to_list(rows)
+    for pin in pins:
+        raw = pin.pop("direction_buckets", None)
+        pin["direction_degs"] = (
+            sorted({int(b) * DIRECTION_BUCKET_DEG for b in raw.split(",") if b != ""}) if raw else []
+        )
+    return {"pins": pins}
 
 
 @bp.post("/floorplans/<int:floorplan_id>/pins")

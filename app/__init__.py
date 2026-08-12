@@ -30,10 +30,20 @@ def create_app(test_config: dict | None = None) -> Flask:
         THUMBNAILS_DIR=str(data_dir / "thumbnails"),
         THUMBNAIL_MAX_PX=400,
         MAX_CONTENT_LENGTH=64 * 1024 * 1024,  # floor plan image uploads only
+        # Always revalidate static assets. This is a localhost tool, so the
+        # bandwidth is free, and a browser holding a cached style.css or JS
+        # module against freshly changed markup renders a half-updated UI
+        # that looks exactly like a bug.
+        SEND_FILE_MAX_AGE_DEFAULT=0,
+        # Jinja caches templates in memory once loaded unless debug is on, so
+        # without this an edited index.html needs a server restart to appear.
+        TEMPLATES_AUTO_RELOAD=True,
     )
 
     if test_config:
         app.config.update(test_config)
+
+    app.jinja_env.auto_reload = app.config["TEMPLATES_AUTO_RELOAD"]
 
     for key in ("FLOORPLANS_DIR", "PHOTOS_DIR", "THUMBNAILS_DIR"):
         Path(app.config[key]).mkdir(parents=True, exist_ok=True)

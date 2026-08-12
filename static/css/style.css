@@ -568,6 +568,9 @@ input[type="range"]::-webkit-slider-thumb {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), 0 0 0 6px var(--pin-selected-ring);
 }
 .pin-marker .pin-count { pointer-events: none; }
+/* clears the direction fan when there is one, sits tight under the icon
+   when there isn't */
+.pin-marker.has-dirs .pin-label { top: 55px; }
 .pin-marker .pin-label {
   position: absolute;
   top: 26px;
@@ -586,19 +589,36 @@ input[type="range"]::-webkit-slider-thumb {
   box-shadow: var(--elev-1);
   pointer-events: none;
 }
+/* The direction fan sits in its own box under the pin icon. Radiating it
+   from the pin's own centre put rays across the photo count inside the
+   circle and straight through the label below it. */
+.pin-dirs {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  width: 26px;
+  height: 26px;
+  margin: 3px 0 0 -13px;
+  pointer-events: none;
+}
+/* one ray per direction photographed, kept light — a pin with photos facing
+   a dozen ways still has to read as a pin */
 .pin-marker .pin-arrow {
   position: absolute;
   left: 50%;
   top: 50%;
   width: 2px;
-  height: 24px;
-  margin-left: -1px;
-  margin-top: -24px;
+  height: 11px;
+  margin: -11px 0 0 -1px;
   background: var(--pin);
   border-radius: var(--r-pill);
   transform-origin: 50% 100%;
   pointer-events: none;
+  opacity: 0.55;
 }
+.pin-marker .pin-arrow.latest { height: 13px; margin-top: -13px; opacity: 1; }
+/* outside the gallery's active direction filter */
+.pin-marker .pin-arrow.dimmed { opacity: 0.18; }
 .pin-marker.selected .pin-arrow { background: var(--pin-selected); }
 
 /* unlocked for repositioning (see setPinMovable in canvas.js) — the ring
@@ -656,8 +676,6 @@ body.dragging-photos .pin-marker::before {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4), 0 0 0 12px var(--pin-selected-ring);
 }
 body.dragging-photos .plan-container { cursor: copy; }
-
-.direction-overlay { position: absolute; inset: 0; pointer-events: none; }
 
 /* --- empty state ----------------------------------------------------- */
 
@@ -732,6 +750,27 @@ body.dragging-photos .plan-container { cursor: copy; }
 }
 .pin-meta-row input { flex: 1; min-width: 0; font-size: 0.84rem; }
 .pin-photo-count { font-size: 0.8rem; color: var(--ink-3); white-space: nowrap; }
+
+/* sits directly above the gallery so a filtered list always reads as
+   filtered, with the "N of M" count right next to the control */
+.pin-gallery-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+.checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  font-size: 0.82rem;
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.checkbox-label input[type="checkbox"] { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.pin-gallery-toolbar .pin-photo-count { margin-left: auto; }
 
 .panel-toolbar {
   flex: 0 0 auto;
@@ -1001,6 +1040,8 @@ body.dragging-photos .plan-container { cursor: copy; }
   background: var(--surface-2);
 }
 .direction-label-row { margin: 0 0 0.4rem; font-size: 0.82rem; }
+.direction-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; justify-content: center; }
+.direction-actions .btn { flex: 0 1 auto; }
 #photoDial { width: 122px; height: 122px; touch-action: none; cursor: crosshair; display: block; margin: 0 auto 0.5rem; }
 
 .import-progress { margin-top: 1rem; }

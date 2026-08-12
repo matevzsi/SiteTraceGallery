@@ -1,8 +1,8 @@
 import { api, floorplanUrl } from "./api.js";
 import { state, toast } from "./state.js";
-import { promptPinLabel } from "./dialogs.js";
+import { promptPinLabel, confirmDialog } from "./dialogs.js";
 import { getTransform } from "./layerTransform.js";
-import { svgEl, headingToXY, xyToHeading } from "./compass.js";
+import { xyToHeading } from "./compass.js";
 import { openPinPanel, closePinPanel } from "./pinPanel.js";
 
 const container = document.getElementById("planContainer");
@@ -10,6 +10,7 @@ const emptyState = document.getElementById("emptyState");
 const floorplanTabs = document.getElementById("floorplanTabs");
 const layerEditBtn = document.getElementById("layerEditBtn");
 const replaceImageBtn = document.getElementById("replaceImageBtn");
+const deleteFloorplanBtn = document.getElementById("deleteFloorplanBtn");
 const layerEditControls = document.getElementById("layerEditControls");
 const layerOpacity = document.getElementById("layerOpacity");
 const assignBanner = document.getElementById("assignModeBanner");
@@ -22,7 +23,6 @@ let wrapperImgEl = null;
 let resizeHandleEl = null;
 let rotateHandleEl = null;
 let pinsLayerEl = null;
-let overlaySvg = null;
 
 // pan/zoom of the whole map (site plan + floor plan layer + pins), applied
 // as a CSS transform on planViewport. Purely a view preference — not
@@ -36,9 +36,6 @@ let panY = 0;
 function applyViewportTransform() {
   if (viewportEl) viewportEl.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
   updatePinCounterScale();
-  // the direction arrows are drawn in content pixels, so their on-screen
-  // length has to be recomputed against the new zoom to stay constant
-  renderDirectionOverlay(overlayPhotos, overlayFilter);
 }
 
 // Pin markers (and their label/arrow) live inside the zoomed viewport, so
@@ -148,6 +145,7 @@ export async function selectFloorplan(id, opts = {}) {
   const fp = getActiveFloorplan();
   layerEditBtn.disabled = !fp || fp.is_site_plan;
   replaceImageBtn.disabled = !fp;
+  deleteFloorplanBtn.disabled = !fp;
   movablePinId = null;
   setLayerEditMode(false);
   if (!opts.skipPopulate) populateFloorplanSelect();
@@ -167,7 +165,6 @@ function ensureDom() {
     sitePlanImgEl?.classList.add("hidden");
     wrapperEl?.classList.add("hidden");
     pinsLayerEl?.classList.add("hidden");
-    overlaySvg?.classList.add("hidden");
     return false;
   }
   emptyState.classList.add("hidden");
@@ -210,12 +207,7 @@ function ensureDom() {
     pinsLayerEl.className = "pins-layer";
     viewportEl.appendChild(pinsLayerEl);
   }
-  if (!overlaySvg) {
-    overlaySvg = svgEl("svg", { class: "direction-overlay" });
-    viewportEl.appendChild(overlaySvg);
-  }
   pinsLayerEl.classList.remove("hidden");
-  overlaySvg.classList.remove("hidden");
   return true;
 }
 
@@ -248,7 +240,6 @@ function render() {
   }
 
   renderPins();
-  renderDirectionOverlay(overlayPhotos, overlayFilter);
 }
 
 function renderPins() {
@@ -264,11 +255,34 @@ function renderPins() {
     el.style.transform = `scale(${1 / zoom})`;
     el.title = pin.id === movablePinId ? "Drag to move this pin" : pin.label || "(unlabeled pin)";
 
-    if (pin.indicator_direction_deg !== null && pin.indicator_direction_deg !== undefined) {
-      const arrow = document.createElement("div");
-      arrow.className = "pin-arrow";
-      arrow.style.transform = `rotate(${pin.indicator_direction_deg}deg)`;
-      el.appendChild(arrow);
+    // One ray per direction anything at this pin was shot in, so the marker
+    // reads as "we have photos facing these ways" at a glance. The fan lives
+    // in its own box under the icon rather than radiating from the pin's
+    // centre — rays through the middle crossed the photo count, and a
+    // southward one ran straight through the label. The most recent heading
+    // keeps a heavier ray so the latest look is still legible in the fan.
+    const dirs = pin.direction_degs || [];
+    if (dirs.length) {
+      const fan = document.createElement("div");
+      fan.className = "pin-dirs";
+      const latest = pin.indicator_direction_deg;
+      // while this pin's gallery has a direction filter on, its fan shows
+      // which way that wedge is pointing
+      const filter = pin.id === state.selectedPinId ? overlayFilter : null;
+      for (const deg of dirs) {
+        const arrow = document.createElement("div");
+        arrow.className = "pin-arrow";
+        if (latest != null && Math.abs(((deg - latest + 540) % 360) - 180) < 8) {
+          arrow.classList.add("latest");
+        }
+        if (filter && !isWithinArc(deg, filter.center, filter.width)) {
+          arrow.classList.add("dimmed");
+        }
+        arrow.style.transform = `rotate(${deg}deg)`;
+        fan.appendChild(arrow);
+      }
+      el.appendChild(fan);
+      el.classList.add("has-dirs");
     }
     if (pin.photo_count) {
       const count = document.createElement("span");
@@ -342,7 +356,6 @@ function onPinDragMove(e) {
   // move just this marker rather than re-rendering the layer mid-drag
   pinDragState.el.style.left = nx * 100 + "%";
   pinDragState.el.style.top = ny * 100 + "%";
-  refreshSelectedPinOverlay(overlayPhotos, overlayFilter);
 }
 
 async function onPinDragEnd() {
@@ -466,51 +479,20 @@ function readDraggedPhotoIds(e) {
   return state.draggingPhotoIds || [];
 }
 
-function renderDirectionOverlay(photos = null, filter = null) {
-  if (!overlaySvg) return;
-  overlaySvg.innerHTML = "";
-  const pin = state.pins.find((p) => p.id === state.selectedPinId);
-  if (!pin || !photos) return;
-
-  const fp = getActiveFloorplan();
-  const t = getTransform(fp, container);
-  const { x: cx, y: cy } = t.toScreen(pin.x, pin.y);
-  overlaySvg.setAttribute("width", container.clientWidth);
-  overlaySvg.setAttribute("height", container.clientHeight);
-  overlaySvg.setAttribute("viewBox", `0 0 ${container.clientWidth} ${container.clientHeight}`);
-
-  // drawn in content pixels inside the zoomed viewport, so divide by zoom
-  // to keep the arrows the same on-screen size as the (counter-scaled) pins
-  const len = 30 / zoom;
-  for (const photo of photos) {
-    if (photo.direction_deg === null || photo.direction_deg === undefined) continue;
-    const inFilter = !filter || isWithinArc(photo.direction_deg, filter.center, filter.width);
-    const { dx, dy } = headingToXY(photo.direction_deg, len);
-    const line = svgEl("line", {
-      x1: cx,
-      y1: cy,
-      x2: cx + dx,
-      y2: cy + dy,
-      stroke: inFilter ? "var(--pin-selected)" : "var(--ink-3)",
-      "stroke-width": (inFilter ? 2.5 : 1.5) / zoom,
-      "stroke-linecap": "round",
-      opacity: inFilter ? 0.95 : 0.5,
-    });
-    overlaySvg.appendChild(line);
-  }
-}
-
 function isWithinArc(deg, center, width) {
   let diff = Math.abs(((deg - center + 540) % 360) - 180);
   return diff <= width / 2;
 }
 
-let overlayPhotos = null;
+// The open pin's direction filter feeds straight into that pin's fan (rays
+// outside the wedge dim) rather than a second set of arrows drawn from the
+// pin's centre — those crossed the icon and its photo count, and painted on
+// top of both.
 let overlayFilter = null;
 export function refreshSelectedPinOverlay(photos, filter) {
-  overlayPhotos = photos;
+  const changed = JSON.stringify(overlayFilter) !== JSON.stringify(filter);
   overlayFilter = filter;
-  renderDirectionOverlay(photos, filter);
+  if (changed && pinsLayerEl) renderPins();
 }
 
 function handlePlanClick(clientX, clientY) {
@@ -749,3 +731,48 @@ export async function refreshFloorplans() {
   const res = await api.listFloorplans();
   await setFloorplans(res.floorplans);
 }
+
+// a heading was set/cleared somewhere, so the fans need re-reading
+document.addEventListener("pin-directions-changed", () => {
+  if (state.activeFloorplanId != null) loadPinsAndRender();
+});
+
+// --- removing a layer --------------------------------------------------
+// Pins on the layer go with it (ON DELETE CASCADE) and their photos fall
+// back to the inbox (photos.pin_id is ON DELETE SET NULL) — no photo is
+// ever destroyed here, which is what the confirmation promises.
+
+deleteFloorplanBtn.addEventListener("click", async () => {
+  const fp = getActiveFloorplan();
+  if (!fp) return;
+
+  const pinCount = state.pins.length;
+  const photoCount = state.pins.reduce((n, p) => n + (p.photo_count || 0), 0);
+  const consequences = [];
+  if (pinCount) consequences.push(`Its ${pinCount} pin${pinCount === 1 ? "" : "s"} will be removed`);
+  if (photoCount) {
+    consequences.push(
+      `the ${photoCount} photo${photoCount === 1 ? "" : "s"} assigned to ${pinCount === 1 ? "it" : "them"} ` +
+        `go back to unassigned (no photos are deleted)`
+    );
+  }
+
+  const ok = await confirmDialog({
+    title: `Remove "${fp.name}"?`,
+    message: consequences.length
+      ? consequences.join(", ") + ". The floor plan image is deleted."
+      : "The floor plan image is deleted. It has no pins on it.",
+    confirmLabel: "Remove floor plan",
+  });
+  if (!ok) return;
+
+  try {
+    await api.deleteFloorplan(fp.id);
+    toast(`Removed "${fp.name}"`);
+    await refreshFloorplans();
+    // photos that were on its pins are back in the inbox
+    document.dispatchEvent(new CustomEvent("photos-assigned"));
+  } catch (err) {
+    toast(err.message, true);
+  }
+});

@@ -8,6 +8,7 @@ const panel = document.getElementById("pinPanel");
 const labelInput = document.getElementById("pinLabelInput");
 const categoryInput = document.getElementById("pinCategoryInput");
 const photoCountEl = document.getElementById("pinPhotoCount");
+const onlyUndirectedInput = document.getElementById("pinOnlyUndirected");
 const floorSelect = document.getElementById("pinFloorSelect");
 const moveBtn = document.getElementById("pinMoveBtn");
 const moveBtnLabel = document.getElementById("pinMoveBtnLabel");
@@ -109,17 +110,28 @@ async function refreshTimeline() {
 // caption — open a photo for its direction/caption detail.
 function renderTimeline() {
   timelineEl.innerHTML = "";
-  const visible = currentPhotos.filter(
-    (p) => !directionFilter || (p.direction_deg != null && isWithinArc(p.direction_deg, directionFilter.center, directionFilter.width))
-  );
-  photoCountEl.textContent = directionFilter
+  const onlyUndirected = onlyUndirectedInput.checked;
+  // the wedge is a filter *by* direction, so it can't mean anything while
+  // the list is restricted to photos that have none — "only unassigned"
+  // wins rather than the two combining into an always-empty result
+  const visible = currentPhotos.filter((p) => {
+    if (onlyUndirected) return p.direction_deg == null;
+    if (!directionFilter) return true;
+    return p.direction_deg != null && isWithinArc(p.direction_deg, directionFilter.center, directionFilter.width);
+  });
+  const filtered = onlyUndirected || directionFilter;
+  photoCountEl.textContent = filtered
     ? `${visible.length} of ${currentPhotos.length} photos`
     : `${currentPhotos.length} photo${currentPhotos.length === 1 ? "" : "s"}`;
 
   if (visible.length === 0) {
     const empty = document.createElement("p");
     empty.className = "grid-empty";
-    empty.textContent = directionFilter ? "No photos in that direction." : "No photos assigned to this pin yet.";
+    empty.textContent = onlyUndirected
+      ? "Every photo at this pin has a direction set."
+      : directionFilter
+      ? "No photos in that direction."
+      : "No photos assigned to this pin yet.";
     timelineEl.appendChild(empty);
     return;
   }
@@ -253,6 +265,12 @@ clearFilterBtn.addEventListener("click", () => {
   renderTimeline();
   onChangeCallback?.onOverlayUpdate?.(currentPhotos, directionFilter);
 });
+
+// Deliberately not reset when another pin opens: it exists for a "work
+// through everything still missing a direction" pass across pins, and it
+// sits directly above the grid with a "N of M photos" readout beside it, so
+// a filtered list can't be mistaken for an empty pin.
+onlyUndirectedInput.addEventListener("change", renderTimeline);
 
 // --- label / category editing ----------------------------------------
 

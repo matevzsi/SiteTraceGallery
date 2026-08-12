@@ -39,6 +39,9 @@
         <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M11.2 2.6 13.4 4.8 5.6 12.6 2.6 13.4l.8-3z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
         Align layer
       </button>
+      <button id="deleteFloorplanBtn" class="btn btn-icon btn-danger-quiet" type="button" disabled title="Remove this floor plan" aria-label="Remove this floor plan">
+        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 4.5h9m-7 0V3.2a.7.7 0 0 1 .7-.7h3.6a.7.7 0 0 1 .7.7v1.3m-6 0 .6 8a.8.8 0 0 0 .8.7h3.8a.8.8 0 0 0 .8-.7l.6-8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
     </div>
 
     <div class="topbar-spacer"></div>
@@ -155,7 +158,6 @@
           <option value="exterior">
           <option value="structural">
         </datalist>
-        <span id="pinPhotoCount" class="pin-photo-count"></span>
       </div>
       <div class="pin-action-row">
         <label class="pin-floor-label">Floor
@@ -177,6 +179,12 @@
         <button id="pinCompassClearFilterBtn" class="btn btn-sm hidden" type="button">Clear filter</button>
         <p class="hint">Drag on the ring to show only photos taken in that direction.</p>
       </details>
+      <div class="pin-gallery-toolbar">
+        <label class="checkbox-label" title="Only show photos that have no direction set yet">
+          <input type="checkbox" id="pinOnlyUndirected"> Show only unassigned
+        </label>
+        <span id="pinPhotoCount" class="pin-photo-count"></span>
+      </div>
       <div id="pinTimeline" class="photo-grid timeline"></div>
     </aside>
   </div>
@@ -257,7 +265,10 @@
         <div class="direction-editor">
           <p class="direction-label-row">Direction: <span id="photoModalDirectionLabel">not set</span></p>
           <svg id="photoDial" viewBox="-70 -70 140 140"></svg>
-          <button type="button" id="photoDialSetBtn" class="btn btn-sm">Set direction</button>
+          <div class="direction-actions">
+            <button type="button" id="photoDialSetBtn" class="btn btn-sm">Set direction</button>
+            <button type="button" id="photoDialSetNextBtn" class="btn btn-sm">Set direction and next image</button>
+          </div>
         </div>
         <div class="modal-actions">
           <button type="button" id="photoModalSaveBtn" class="btn btn-primary">Save</button>

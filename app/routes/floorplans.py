@@ -163,10 +163,36 @@ def replace_floorplan_image(floorplan_id):
 
 @bp.delete("/<int:floorplan_id>")
 def delete_floorplan(floorplan_id):
+    """Remove a layer, its pins, and its image file.
+
+    Photos are never destroyed here: pins cascade away with the floorplan and
+    photos.pin_id is ON DELETE SET NULL, so anything that was assigned to
+    this level lands back in the unassigned inbox.
+    """
     db = get_db()
     row = db.execute("SELECT * FROM floorplans WHERE id = ?", (floorplan_id,)).fetchone()
     if not row:
         return error("floorplan not found", 404)
+
+    if row["is_site_plan"]:
+        others = db.execute("SELECT COUNT(*) AS c FROM floorplans WHERE id != ?", (floorplan_id,)).fetchone()["c"]
+        if others:
+            # every other layer's offset/scale/rotation is expressed against
+            # the site plan, so removing it out from under them would leave
+            # them without a reference frame
+            return error(
+                "the site plan is the reference frame for every other level — "
+                "remove those first, or use Replace image to swap it",
+                409,
+            )
+
     db.execute("DELETE FROM floorplans WHERE id = ?", (floorplan_id,))
     db.commit()
+
+    image_path = os.path.join(current_app.config["FLOORPLANS_DIR"], row["image_path"])
+    try:
+        os.remove(image_path)
+    except OSError:
+        pass
+
     return "", 204
