@@ -84,6 +84,13 @@ def update_pin(pin_id):
         fields["label"] = (data["label"] or "").strip()
     if "category" in data:
         fields["category"] = data["category"] or None
+    if "floorplan_id" in data:
+        # moving a pin to another level; x/y are relative to the layer image,
+        # so the caller is expected to send the re-projected pair alongside
+        target = db.execute("SELECT id FROM floorplans WHERE id = ?", (data["floorplan_id"],)).fetchone()
+        if not target:
+            return error("target floorplan not found")
+        fields["floorplan_id"] = target["id"]
     for key in ("x", "y"):
         if key in data:
             try:

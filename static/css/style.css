@@ -625,6 +625,15 @@ input[type="range"]::-webkit-slider-thumb {
   border-bottom: 1px solid var(--border);
 }
 .pin-action-row .hint { margin: 0; }
+.pin-floor-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  font-size: 0.8rem;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.pin-floor-label select { font-size: 0.82rem; padding: 0.25em 0.4em; max-width: 150px; }
 #pinMoveBtn .icon-unlocked { display: none; }
 #pinMoveBtn.is-unlocked .icon-locked { display: none; }
 #pinMoveBtn.is-unlocked .icon-unlocked { display: block; }

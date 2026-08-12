@@ -369,6 +369,49 @@ function clamp01(v) {
   return Math.min(1, Math.max(0, v));
 }
 
+/** Move a pin to a different level, keeping it over the same physical spot.
+ *
+ *  Pin coordinates are normalized against their own layer's image, so
+ *  carrying x/y across unchanged would land the pin wherever that fraction
+ *  happens to fall on the new plan. Instead the position is projected out to
+ *  the shared site-plan space through the old layer's transform and back in
+ *  through the new one — "the first floor above this bit of ground" rather
+ *  than "the same fraction of a different drawing". Called from the pin
+ *  panel's floor selector via the hooks in app.js.
+ */
+export async function movePinToFloorplan(pinId, targetFpId) {
+  const pin = state.pins.find((p) => p.id === pinId);
+  const fromFp = getActiveFloorplan();
+  const toFp = state.floorplans.find((f) => f.id === Number(targetFpId));
+  if (!pin || !fromFp || !toFp || fromFp.id === toFp.id) return;
+
+  const world = getTransform(fromFp, container).toScreen(pin.x, pin.y);
+  const local = getTransform(toFp, container).toLocal(world.x, world.y);
+  const x = clamp01(local.x);
+  const y = clamp01(local.y);
+  const clamped = Math.abs(x - local.x) > 1e-9 || Math.abs(y - local.y) > 1e-9;
+
+  try {
+    await api.updatePin(pin.id, { floorplan_id: toFp.id, x, y });
+    // follow the pin over so it's obvious where it ended up — especially
+    // when the levels don't overlap and the position had to be clamped
+    await selectFloorplan(toFp.id);
+    const moved = state.pins.find((p) => p.id === pin.id);
+    if (moved) {
+      state.selectedPinId = moved.id;
+      renderPins();
+      await openPinPanel(moved);
+    }
+    toast(
+      clamped
+        ? `Moved to "${toFp.name}" — that spot is outside this plan, so the pin sits at its edge`
+        : `Moved to "${toFp.name}"`
+    );
+  } catch (err) {
+    toast(err.message, true);
+  }
+}
+
 // --- drag photos onto a pin to assign them ----------------------------
 // The drag payload is carried in state.draggingPhotoIds (see state.js):
 // dragenter/dragover can't read dataTransfer, and the marker needs to know

@@ -98,6 +98,13 @@ library. Default behavior (unset) is unaffected.
 Site plan rows carry the same offset/scale/rotation columns but ignore them —
 the site plan always renders at the identity transform.
 
+A layer's transform is expressed against the site plan's own aspect box
+(`offset_x/offset_y` are fractions of its width/height, `scale` a fraction
+of its width), so the canvas must always keep the site plan's aspect ratio.
+It does — but note the mapping is *not* invariant to the canvas's aspect
+ratio, so anything recomputing layer geometry outside the app has to use
+the same frame or identical positions will appear to drift.
+
 The image behind any layer (including the site plan) can be swapped later
 without touching its pins/photos or, for a regular layer, its existing
 offset/scale/rotation — those stay as a starting point to nudge if the new
@@ -182,6 +189,16 @@ decisions that would make adding them later painful.
 - Edit pin label/category; delete a pin (with confirmation). If the pin has
   photos assigned, the user is asked whether to unassign them (back to the
   inbox) or delete them too before the pin is removed.
+- Move a pin to another level: a floor selector in its panel reassigns it.
+  Because pin coordinates are normalized against their *own* layer's image,
+  carrying x/y across unchanged would drop the pin wherever that fraction
+  happens to land on the new drawing — so the position is projected out to
+  the shared site-plan space through the old layer's transform and back in
+  through the new one. "The first floor above this bit of ground", not "the
+  same fraction of a different drawing". Assigned photos travel with the
+  pin, the view switches to the target level so it's clear where it landed,
+  and if the levels don't overlap the position is clamped to the new
+  layer's edge with a warning saying so.
 - Reposition a pin: open it, click "Unlock position" in its panel, then drag
   the marker on the plan; the new position saves on release. Pins are
   locked by default and re-lock whenever the panel closes or another pin is

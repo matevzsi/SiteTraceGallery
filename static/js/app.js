@@ -1,4 +1,10 @@
-import { refreshFloorplans, loadPinsAndRender, refreshSelectedPinOverlay, setPinMovable } from "./canvas.js";
+import {
+  refreshFloorplans,
+  loadPinsAndRender,
+  refreshSelectedPinOverlay,
+  setPinMovable,
+  movePinToFloorplan,
+} from "./canvas.js";
 import { setHooks } from "./pinPanel.js";
 import { loadUnassigned } from "./unassigned.js";
 import "./dialogs.js";
@@ -12,6 +18,7 @@ setHooks({
   onPinsChanged: loadPinsAndRender,
   onOverlayUpdate: refreshSelectedPinOverlay,
   onPinMovableChange: setPinMovable,
+  onPinFloorChange: movePinToFloorplan,
 });
 
 // --- theme ------------------------------------------------------------

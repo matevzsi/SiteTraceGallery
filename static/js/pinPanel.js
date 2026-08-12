@@ -8,6 +8,7 @@ const panel = document.getElementById("pinPanel");
 const labelInput = document.getElementById("pinLabelInput");
 const categoryInput = document.getElementById("pinCategoryInput");
 const photoCountEl = document.getElementById("pinPhotoCount");
+const floorSelect = document.getElementById("pinFloorSelect");
 const moveBtn = document.getElementById("pinMoveBtn");
 const moveBtnLabel = document.getElementById("pinMoveBtnLabel");
 const moveHint = document.getElementById("pinMoveHint");
@@ -25,8 +26,8 @@ let pendingDeletePinId = null;
 let positionUnlocked = false;
 let onChangeCallback = null; // set by canvas.js consumers via setHooks
 
-export function setHooks({ onPinsChanged, onOverlayUpdate, onPinMovableChange }) {
-  onChangeCallback = { onPinsChanged, onOverlayUpdate, onPinMovableChange };
+export function setHooks({ onPinsChanged, onOverlayUpdate, onPinMovableChange, onPinFloorChange }) {
+  onChangeCallback = { onPinsChanged, onOverlayUpdate, onPinMovableChange, onPinFloorChange };
 }
 
 export async function openPinPanel(pin) {
@@ -35,10 +36,33 @@ export async function openPinPanel(pin) {
   clearFilterBtn.classList.add("hidden");
   labelInput.value = pin.label || "";
   categoryInput.value = pin.category || "";
+  populateFloorSelect(pin);
   setPositionUnlocked(false); // every pin opens locked
   panel.classList.remove("hidden");
   await refreshTimeline();
 }
+
+// --- move the pin to another level ------------------------------------
+
+function populateFloorSelect(pin) {
+  floorSelect.innerHTML = "";
+  for (const fp of state.floorplans) {
+    const opt = document.createElement("option");
+    opt.value = String(fp.id);
+    opt.textContent = fp.is_site_plan ? `${fp.name} (site)` : fp.name;
+    floorSelect.appendChild(opt);
+  }
+  floorSelect.value = String(pin.floorplan_id);
+}
+
+floorSelect.addEventListener("change", () => {
+  if (!currentPin) return;
+  const targetId = Number(floorSelect.value);
+  if (targetId === currentPin.floorplan_id) return;
+  // canvas.js owns the layer transforms, so it does the re-projection and
+  // then switches the view to the target level
+  onChangeCallback?.onPinFloorChange?.(currentPin.id, targetId);
+});
 
 export function closePinPanel() {
   panel.classList.add("hidden");
