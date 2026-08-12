@@ -220,11 +220,16 @@ decisions that would make adding them later painful.
   Headings are bucketed (15°) so a pin holding hundreds of photos still
   ships a handful of numbers and draws a readable fan; the most recent
   heading keeps a heavier ray so the latest look stays legible in it.
-- The fan sits in its own box **below** the pin icon. Radiating it from the
-  pin's own centre — which is what a per-photo arrow overlay drawn on top of
-  the markers used to do — put rays across the icon, its photo count and the
-  label underneath. There is no separate direction overlay: when the pin's
-  gallery has an angle filter active, rays outside the wedge dim instead.
+- The rose is **centred on the pin** — a bearing only reads correctly from
+  the point it's a bearing from, and a rose drawn off to one side looks like
+  the directions belong somewhere else. It stays clear of the icon by
+  starting its rays *outside* it: each ray spans centre-to-outer so it can
+  rotate about the pin, but paints only its outer segment, leaving a hole
+  wider than the icon's radius. Nothing crosses the icon, its photo count,
+  or the label below. There is no separate per-photo arrow overlay drawn on
+  top of the markers — that is what used to put rays through all three —
+  and when the pin's gallery has an angle filter active, rays outside the
+  wedge dim instead.
 - Pins, their labels and their direction fans hold a constant screen size
   regardless of map zoom.
 

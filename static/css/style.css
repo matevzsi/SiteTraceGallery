@@ -568,9 +568,9 @@ input[type="range"]::-webkit-slider-thumb {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), 0 0 0 6px var(--pin-selected-ring);
 }
 .pin-marker .pin-count { pointer-events: none; }
-/* clears the direction fan when there is one, sits tight under the icon
+/* clears the direction rose when there is one, sits tight under the icon
    when there isn't */
-.pin-marker.has-dirs .pin-label { top: 55px; }
+.pin-marker.has-dirs .pin-label { top: 48px; }
 .pin-marker .pin-label {
   position: absolute;
   top: 26px;
@@ -589,37 +589,43 @@ input[type="range"]::-webkit-slider-thumb {
   box-shadow: var(--elev-1);
   pointer-events: none;
 }
-/* The direction fan sits in its own box under the pin icon. Radiating it
-   from the pin's own centre put rays across the photo count inside the
-   circle and straight through the label below it. */
+/* The direction rose is centred on the pin — bearings only read correctly
+   from the point they're bearings from. It avoids the icon by starting the
+   rays outside it rather than by sitting somewhere else: each ray element
+   spans centre-to-outer so it can rotate about the pin, and paints only its
+   outer --ray-len, leaving a clear hole of (--ray-outer - --ray-len) that
+   must stay wider than the icon's radius (11px + 2.5px border). */
 .pin-dirs {
+  --ray-outer: 32px;
   position: absolute;
   left: 50%;
-  top: 100%;
-  width: 26px;
-  height: 26px;
-  margin: 3px 0 0 -13px;
+  top: 50%;
+  width: calc(var(--ray-outer) * 2);
+  height: calc(var(--ray-outer) * 2);
+  margin: calc(var(--ray-outer) * -1) 0 0 calc(var(--ray-outer) * -1);
   pointer-events: none;
 }
 /* one ray per direction photographed, kept light — a pin with photos facing
    a dozen ways still has to read as a pin */
 .pin-marker .pin-arrow {
+  --ray-len: 13px;
   position: absolute;
   left: 50%;
-  top: 50%;
+  top: 0;
   width: 2px;
-  height: 11px;
-  margin: -11px 0 0 -1px;
-  background: var(--pin);
+  height: var(--ray-outer);
+  margin-left: -1px;
+  color: var(--pin);
+  background: linear-gradient(to bottom, currentColor 0, currentColor var(--ray-len), transparent var(--ray-len));
   border-radius: var(--r-pill);
   transform-origin: 50% 100%;
   pointer-events: none;
   opacity: 0.55;
 }
-.pin-marker .pin-arrow.latest { height: 13px; margin-top: -13px; opacity: 1; }
+.pin-marker .pin-arrow.latest { --ray-len: 16px; opacity: 1; }
 /* outside the gallery's active direction filter */
 .pin-marker .pin-arrow.dimmed { opacity: 0.18; }
-.pin-marker.selected .pin-arrow { background: var(--pin-selected); }
+.pin-marker.selected .pin-arrow { color: var(--pin-selected); }
 
 /* unlocked for repositioning (see setPinMovable in canvas.js) — the ring
    pulses so it's obvious which pin is loose and that the state is
