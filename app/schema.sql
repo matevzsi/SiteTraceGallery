@@ -58,7 +58,20 @@ CREATE INDEX IF NOT EXISTS idx_photos_taken_at ON photos(taken_at);
 -- dedup lookup on re-import: same source filename + size already seen
 CREATE INDEX IF NOT EXISTS idx_photos_dedup ON photos(orig_filename, file_size);
 
--- Future extension points (not built in v1, see spec "Explicitly out of
--- scope"). Left undeclared on purpose: adding them later is just a new
--- CREATE TABLE plus a nullable FK column, nothing here needs to change to
--- accommodate photo_embeddings, reconstructions, or camera_poses.
+-- Cached visual descriptor per photo, used to suggest which pin an
+-- unassigned photo belongs to (see app/suggest.py). Derived data only:
+-- deleting a row just means it gets recomputed from the thumbnail, and the
+-- whole table can be dropped without losing anything the user entered.
+-- `kind` records which descriptor version produced the vector so a future
+-- change can invalidate the old ones instead of silently mixing them.
+CREATE TABLE IF NOT EXISTS photo_embeddings (
+    photo_id    INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,
+    kind        TEXT NOT NULL,
+    vector      BLOB NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+-- Future extension points (not built, see spec "Explicitly out of scope").
+-- Left undeclared on purpose: adding them later is just a new CREATE TABLE
+-- plus a nullable FK column, nothing here needs to change to accommodate
+-- reconstructions or camera_poses.

@@ -1,6 +1,6 @@
 from flask import Blueprint, current_app, request
 
-from .. import importer
+from .. import importer, suggest
 from ..db import get_db
 from .helpers import error, remove_photo_files, row_to_dict, rows_to_list
 
@@ -157,6 +157,25 @@ def bulk_assign():
     )
     db.commit()
     return {"updated": len(photo_ids)}
+
+
+@bp.post("/photos/suggest")
+def suggest_pins():
+    """Group the given unassigned photos by the pin they most likely belong to.
+
+    First call after a batch of imports also builds the missing descriptors,
+    so it can take a few seconds; they're cached from then on.
+    """
+    data = request.get_json(silent=True) or {}
+    photo_ids = data.get("photo_ids")
+    if not isinstance(photo_ids, list) or not photo_ids:
+        return error("photo_ids must be a non-empty list")
+    if not all(isinstance(pid, int) for pid in photo_ids):
+        return error("photo_ids must all be integers")
+    if len(photo_ids) > 2000:
+        return error("too many photos to compare at once (limit 2000)")
+
+    return suggest.suggest_pins(get_db(), photo_ids, current_app.config["THUMBNAILS_DIR"])
 
 
 @bp.post("/photos/import")

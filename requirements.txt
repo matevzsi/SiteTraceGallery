@@ -1,2 +1,6 @@
 Flask>=3.0,<4.0
 Pillow>=10.0,<11.0
+# similarity scoring for pin auto-suggestions: comparing a page of photos
+# against every already-assigned one is a matrix multiply over thousands of
+# vectors, which is numpy's job and nobody else's
+numpy>=1.26,<3.0

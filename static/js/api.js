@@ -70,6 +70,12 @@ export const api = {
       headers: JSON_HEADERS,
       body: JSON.stringify({ photo_ids: photoIds, pin_id: pinId }),
     }).then(handle),
+  suggestPins: (photoIds) =>
+    fetch(`/api/photos/suggest`, {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ photo_ids: photoIds }),
+    }).then(handle),
   deletePhoto: (id) => fetch(`/api/photos/${id}`, { method: "DELETE" }).then(handle),
   bulkDeletePhotos: (photoIds) =>
     fetch(`/api/photos/bulk-delete`, {

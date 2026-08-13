@@ -782,6 +782,7 @@ body.dragging-photos .plan-container { cursor: copy; }
   flex: 0 0 auto;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.35rem;
   padding: 0.5rem 0.6rem;
   border-bottom: 1px solid var(--border);
@@ -952,6 +953,35 @@ body.dragging-photos .plan-container { cursor: copy; }
 .photo-select-wrap { position: absolute; }
 
 .timeline { --grid-col: 128px; }
+
+/* Auto-suggest view: the panel's scroller stops being the grid itself and
+   becomes a stack of per-pin sections, each with its own grid inside.
+   The inner grids repeat .photo-grid's row sizing on purpose rather than
+   reusing the class — that rule also carries the panel-level flex/overflow
+   behaviour, which is wrong for a section that just flows. */
+.photo-grid.grouped { display: block; }
+.photo-group { margin-bottom: 1rem; }
+.photo-group:last-child { margin-bottom: 0; }
+.photo-group-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0 0.45rem;
+  background: var(--surface);
+}
+.photo-group-title { flex: 1; min-width: 0; }
+.photo-group-title strong { font-size: 0.88rem; display: block; }
+.photo-group-sub { display: block; font-size: 0.73rem; color: var(--ink-3); }
+.group-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--grid-col, 120px), 1fr));
+  /* load-bearing, same as .photo-grid — see the comment there */
+  grid-auto-rows: max-content;
+  gap: 0.5rem;
+}
 
 /* drag image for a multi-photo drag; lives off-screen just long enough for
    the browser to snapshot it (see onCardDragStart in unassigned.js) */

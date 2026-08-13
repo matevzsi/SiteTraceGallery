@@ -138,18 +138,28 @@ image doesn't line up exactly.
 | caption | text, nullable | optional user note |
 | created_at | datetime | when imported into the app |
 
+### `photo_embeddings`
+| column | type | notes |
+|---|---|---|
+| photo_id | integer PK FK → photos | ON DELETE CASCADE |
+| kind | text | which descriptor version produced this vector; changing the maths bumps it so old vectors are recomputed rather than silently compared against new ones |
+| vector | blob | float32 descriptor, see "Auto-suggested pin grouping" |
+| created_at | datetime | |
+
+Purely derived data — deleting a row means it gets recomputed from the
+thumbnail, and the whole table can be dropped without losing anything the
+user entered.
+
 Keep the schema easy to extend — do not hardcode assumptions that would
 block adding these later (no need to build them now, just don't paint into a
 corner):
-- `photo_embeddings` (photo_id, vector) — for future image-similarity /
-  auto-tagging.
 - `reconstructions` (id, pin_id, date_range, file_path, type) — for future
   photogrammetry/3D output (point cloud or mesh file), if added later.
 - `camera_poses` (photo_id, reconstruction_id, x, y, z, rotation) — for future
   automatically-recovered camera positions from 3D reconstruction.
 
-**Do not build photogrammetry or embeddings now.** Just avoid schema/API
-decisions that would make adding them later painful.
+**Do not build photogrammetry now.** Just avoid schema/API decisions that
+would make adding it later painful.
 
 ---
 
@@ -342,7 +352,58 @@ decisions that would make adding them later painful.
 - Unassigned photos panel (left side) and pin gallery panel (right side) can
   be open at the same time without covering the top bar's controls.
 
-### 8. Interface conventions
+### 8. Auto-suggested pin grouping (v2)
+
+"Auto suggest" in the unassigned panel regroups the loaded photos under the
+pin each most likely belongs to: pin names become group headings with their
+photos beneath, then the next pin, and a final "No suggestion" section.
+Each group carries its floor, count and match strength, plus an "Assign
+all" button — grouping without a way to accept a group wholesale would just
+be decoration.
+
+- **The reference set is the user's own sorting.** Every photo already on a
+  pin is a labelled example; a photo is suggested for the pin holding its
+  single best match. Best, not average — a pin accumulates photos across
+  months of construction, so averaging washes out the one shot that
+  actually looks like the query. Nothing is learned from a model of what
+  rooms look like, and nothing leaves the machine.
+- **Two signals.** Visual similarity from a cached descriptor, plus time
+  proximity to the pin's photos: site photography goes in bursts, so two
+  photos taken a minute apart are almost certainly the same place whatever
+  the framing. Deliberately *no* GPS — handset accuracy is 5-10m while pins
+  inside a building are metres apart, so it would confidently group the
+  wrong things.
+- **The descriptor** (`app/utils/descriptor.py`) is a 16x16 grayscale block,
+  mean-subtracted and unit-normalised so a dot product between two of them
+  is normalised cross-correlation — "same place, same framing", ignoring
+  exposure, which matters when the same corner is shot in March and in
+  August — concatenated with a 6³ RGB histogram, square-rooted and
+  normalised, which survives reframing. Block weights are folded into the
+  stored vector so similarity is one dot product. Computed from the 400px
+  thumbnail, cached in `photo_embeddings`, and tagged with a `kind` string
+  so changing the maths recomputes old vectors instead of silently
+  comparing incompatible ones.
+- **It would rather say nothing than guess.** A photo below the confidence
+  floor goes to "No suggestion". The two error classes are not symmetric: a
+  missed photo just gets sorted by hand, which is the status quo, while a
+  photo grouped under the wrong pin can be bulk-assigned there by one click
+  of "Assign all". Calibrated on a set with four known locations, genuine
+  matches scored 0.52-0.72 against 0.28-0.47 for unrelated images; the
+  floor sits above the noise rather than between the two. `MIN_SCORE` in
+  `app/suggest.py` is the knob if suggestions come out too timid or too
+  eager.
+- Grouping is a view over exactly the photos that were compared, so paging
+  is suspended while it's on and any change that reloads the list drops it.
+- Descriptors are derived data: `photo_embeddings` can be dropped wholesale
+  without losing anything the user entered.
+
+This adds **numpy** as a dependency. Comparing a page of photos against
+every already-assigned one is a matrix multiply over thousands of vectors,
+which is numpy's job; a pure-Python inner loop would take tens of seconds
+where this takes milliseconds. Install with `pip install -r
+requirements.txt`.
+
+### 9. Interface conventions
 - Light and dark themes, both driven by one set of CSS custom properties.
   Default follows the OS; the top-bar toggle stores an explicit override in
   `localStorage`, applied before first paint so a reload never flashes the
@@ -387,9 +448,11 @@ fix this, and on its own is what triggers the overlap.)
 
 - Photogrammetry / 3D reconstruction (COLMAP, Meshroom, etc.) — schema should
   allow for it later, but do not implement.
-- Image similarity / embedding-based auto-tagging — same, schema-ready only.
 - Multi-user accounts, authentication, cloud sync, mobile app.
 - Editing/rotating/annotating photos beyond caption text.
+
+*(Image similarity was on this list for v1 and has since been built — see
+"Auto-suggested pin grouping" below.)*
 
 ---
 
@@ -401,9 +464,10 @@ fix this, and on its own is what triggers the overlap.)
   the UI becoming sluggish: thumbnails rather than originals in every grid,
   paged loading (60 at a time) that appends instead of re-rendering, and
   `loading="lazy"` so off-screen tiles cost nothing until scrolled to.
-- Keep dependencies minimal and well-known (Flask/FastAPI, Pillow, SQLite via
-  stdlib `sqlite3` or a lightweight ORM like SQLAlchemy — avoid heavy
-  frameworks).
+- Keep dependencies minimal and well-known (Flask, Pillow, numpy, SQLite via
+  stdlib `sqlite3` — avoid heavy frameworks). Notably *no* ML stack: pin
+  suggestions run on a hand-rolled descriptor and a matrix multiply, not on
+  torch or a downloaded model.
 - Code should be reasonably organized (routes/views separated from
   DB/data-access logic) but this is a personal tool, not a production SaaS —
   don't over-engineer.

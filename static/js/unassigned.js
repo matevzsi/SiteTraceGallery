@@ -12,6 +12,8 @@ const selectAllBtn = document.getElementById("selectAllBtn");
 const clearSelectionBtn = document.getElementById("clearSelectionBtn");
 const assignSelectedBtn = document.getElementById("assignSelectedBtn");
 const deleteSelectedBtn = document.getElementById("deleteSelectedBtn");
+const autoSuggestBtn = document.getElementById("autoSuggestBtn");
+const autoSuggestLabel = document.getElementById("autoSuggestLabel");
 const loadMoreBtn = document.getElementById("loadMoreBtn");
 const countBadge = document.getElementById("unassignedCount");
 const zoomInBtn = document.getElementById("gridZoomInBtn");
@@ -73,6 +75,8 @@ export async function loadUnassigned(reset = true) {
     selected.clear();
     cardsByPhotoId.clear();
     grid.innerHTML = "";
+    grid.classList.remove("grouped");
+    suggestion = null; // grouping described the previous set of photos
     savedScrollTop = 0;
   }
   // paging is by offset, not page number: photos leave this list as they're
@@ -88,6 +92,7 @@ export async function loadUnassigned(reset = true) {
   renderEmptyState();
   loadMoreBtn.classList.toggle("hidden", !hasMore);
   updateSelectionButtons();
+  updateSuggestButton();
 }
 
 /** Drop photos that are no longer unassigned without rebuilding the grid,
@@ -100,8 +105,14 @@ function removeFromList(ids) {
     selected.delete(id);
   }
   loadedPhotos = loadedPhotos.filter((p) => !gone.has(p.id));
+  if (suggestion) {
+    for (const group of suggestion.groups) group.photo_ids = group.photo_ids.filter((id) => !gone.has(id));
+    suggestion.unmatched = suggestion.unmatched.filter((id) => !gone.has(id));
+    pruneEmptyGroups();
+  }
   renderEmptyState();
   updateSelectionButtons();
+  updateSuggestButton();
 }
 
 /** Full re-read of everything currently on screen, for changes that can add
@@ -116,6 +127,10 @@ async function refreshKeepingScroll() {
   const held = Math.max(PAGE_SIZE, loadedPhotos.length);
   const keepSelected = new Set(selected);
 
+  // a re-read can bring photos back into the list that were never compared,
+  // so the grouping no longer describes what's on screen
+  suggestion = null;
+  grid.classList.remove("grouped");
   loadedPhotos = [];
   selected.clear();
   cardsByPhotoId.clear();
@@ -142,6 +157,7 @@ async function refreshKeepingScroll() {
   renderEmptyState();
   loadMoreBtn.classList.toggle("hidden", !hasMore);
   updateSelectionButtons();
+  updateSuggestButton();
   grid.scrollTop = scroll;
   savedScrollTop = scroll;
 }
@@ -164,6 +180,134 @@ function appendCards(photos) {
   const frag = document.createDocumentFragment();
   for (const photo of photos) frag.appendChild(buildCard(photo));
   grid.appendChild(frag);
+}
+
+// --- auto suggest ------------------------------------------------------
+// Groups the loaded photos under the pin each most likely belongs to, by
+// comparing them against everything already sorted onto pins. It's a view
+// over what's currently loaded, so paging is suspended while it's on.
+
+let suggestion = null;
+
+function updateSuggestButton(busy = false) {
+  autoSuggestBtn.disabled = busy || loadedPhotos.length === 0;
+  autoSuggestLabel.textContent = busy ? "Comparing…" : suggestion ? "Clear grouping" : "Auto suggest";
+  autoSuggestBtn.classList.toggle("active", !!suggestion && !busy);
+}
+
+function clearSuggestion() {
+  suggestion = null;
+  grid.classList.remove("grouped");
+  grid.innerHTML = "";
+  cardsByPhotoId.clear();
+  appendCards(loadedPhotos);
+  for (const id of selected) syncCard(id);
+  renderEmptyState();
+  loadMoreBtn.classList.toggle("hidden", !hasMore);
+  updateSuggestButton();
+}
+
+autoSuggestBtn.addEventListener("click", async () => {
+  if (suggestion) {
+    clearSuggestion();
+    return;
+  }
+  if (!loadedPhotos.length) return;
+  updateSuggestButton(true);
+  try {
+    const res = await api.suggestPins(loadedPhotos.map((p) => p.id));
+    if (!res.reference_photos) {
+      toast("Nothing to compare against yet — assign a few photos to pins first.", true);
+      return;
+    }
+    suggestion = res;
+    renderGrouped();
+    const placed = res.groups.reduce((n, g) => n + g.photo_ids.length, 0);
+    toast(
+      `Grouped ${placed} photo${placed === 1 ? "" : "s"} under ${res.groups.length} pin${res.groups.length === 1 ? "" : "s"}` +
+        (res.unmatched.length ? ` · ${res.unmatched.length} with no confident match` : "")
+    );
+  } catch (err) {
+    toast(err.message, true);
+  } finally {
+    updateSuggestButton();
+  }
+});
+
+function renderGrouped() {
+  grid.innerHTML = "";
+  cardsByPhotoId.clear();
+  grid.classList.add("grouped");
+  const byId = new Map(loadedPhotos.map((p) => [p.id, p]));
+
+  for (const group of suggestion.groups) {
+    const photos = group.photo_ids.map((id) => byId.get(id)).filter(Boolean);
+    if (photos.length) grid.appendChild(buildGroup(group, photos));
+  }
+  const rest = suggestion.unmatched.map((id) => byId.get(id)).filter(Boolean);
+  if (rest.length) grid.appendChild(buildGroup(null, rest));
+
+  for (const id of selected) syncCard(id);
+  // paging is suspended: the grouping describes exactly the photos that were
+  // compared, and appending a page of ungrouped ones underneath would be a lie
+  loadMoreBtn.classList.add("hidden");
+}
+
+function buildGroup(group, photos) {
+  const section = document.createElement("section");
+  section.className = "photo-group";
+  if (group) section.dataset.pinId = String(group.pin_id);
+
+  const header = document.createElement("header");
+  header.className = "photo-group-header";
+
+  const title = document.createElement("div");
+  title.className = "photo-group-title";
+  const name = document.createElement("strong");
+  name.textContent = group ? group.label : "No suggestion";
+  const sub = document.createElement("span");
+  sub.className = "photo-group-sub";
+  sub.textContent = group
+    ? `${group.floorplan_name} · ${photos.length} photo${photos.length === 1 ? "" : "s"} · ${Math.round(group.score * 100)}% match`
+    : `${photos.length} photo${photos.length === 1 ? "" : "s"} that didn't look like any pin`;
+  title.append(name, sub);
+  header.appendChild(title);
+
+  if (group) {
+    const assignBtn = document.createElement("button");
+    assignBtn.type = "button";
+    assignBtn.className = "btn btn-sm btn-primary";
+    assignBtn.textContent = "Assign all";
+    assignBtn.addEventListener("click", () => assignGroup(group, section));
+    header.appendChild(assignBtn);
+  }
+
+  const inner = document.createElement("div");
+  inner.className = "group-grid";
+  for (const photo of photos) inner.appendChild(buildCard(photo));
+
+  section.append(header, inner);
+  return section;
+}
+
+async function assignGroup(group, section) {
+  const ids = group.photo_ids.filter((id) => cardsByPhotoId.has(id));
+  if (!ids.length) return;
+  try {
+    const res = await api.bulkAssign(ids, group.pin_id);
+    toast(`Assigned ${res.updated} photo${res.updated === 1 ? "" : "s"} to "${group.label}"`);
+    document.dispatchEvent(new CustomEvent("photos-assigned", { detail: { removedIds: ids } }));
+  } catch (err) {
+    toast(err.message, true);
+  }
+}
+
+/** A group whose photos have all been assigned away has nothing left to say. */
+function pruneEmptyGroups() {
+  for (const section of grid.querySelectorAll(".photo-group")) {
+    if (!section.querySelector(".photo-card")) section.remove();
+  }
+  if (suggestion && !grid.querySelector(".photo-card")) clearSuggestion();
 }
 
 function buildCard(photo) {
