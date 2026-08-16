@@ -92,12 +92,22 @@ function sizeContainerToStage(aspect) {
   // and get clamped by max-width, leaving the height (derived from the
   // unclamped width) slightly too large and the plan subtly stretched
   const cs = getComputedStyle(stage);
-  const w = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const availableWidth = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const availableHeight = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+  // A landscape plan fitted to width becomes a small strip in the middle of
+  // a portrait phone. On narrow screens use a cover-style initial size: keep
+  // the plan undistorted, fill the map vertically, and leave the excess width
+  // available through the existing pan/zoom interaction.
+  const coverMobile = window.matchMedia("(max-width: 620px)").matches && availableHeight > 0;
+  const w = coverMobile ? Math.max(availableWidth, availableHeight * aspect) : availableWidth;
   const h = w / aspect;
   container.style.width = w + "px";
   container.style.height = h + "px";
 }
 window.addEventListener("resize", () => {
+  if (lastSiteAspect) sizeContainerToStage(lastSiteAspect);
+});
+window.visualViewport?.addEventListener("resize", () => {
   if (lastSiteAspect) sizeContainerToStage(lastSiteAspect);
 });
 

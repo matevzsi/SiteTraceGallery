@@ -1147,6 +1147,9 @@ body.dragging-photos .plan-container { cursor: copy; }
 .view-mode .photo-select-wrap { display: none; }
 
 @media (max-width: 620px) {
+  /* canvas.js uses the stage height on phones, so a landscape plan can be
+     wider than the portrait viewport without max-width shrinking it back */
+  .plan-container { flex: 0 0 auto; max-width: none; }
   .pin-controls-grid { grid-template-columns: 1fr; }
   .pin-details-column { border-right: 0; border-bottom: 1px solid var(--border); }
 }
