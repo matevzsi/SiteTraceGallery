@@ -30,6 +30,7 @@ let currentPin = null;
 let currentPins = [];
 let currentPhotos = [];
 let directionFilter = null; // { center, width } in degrees
+let followDirections = null; // pin id -> bearing toward the clicked map point
 let dateFilter = { from: "", to: "" }; // kept while switching pins
 let pendingDeletePinId = null;
 let positionUnlocked = false;
@@ -39,16 +40,18 @@ export function setHooks({ onPinsChanged, onOverlayUpdate, onPinMovableChange, o
   onChangeCallback = { onPinsChanged, onOverlayUpdate, onPinMovableChange, onPinFloorChange };
 }
 
-export async function openPinPanel(pins) {
+export async function openPinPanel(pins, { followDirections: followed = null } = {}) {
   currentPins = Array.isArray(pins) ? pins : [pins];
+  followDirections = followed;
   currentPin = currentPins.length === 1 ? currentPins[0] : null;
   if (!currentPins.length) return closePinPanel();
   dateFromInput.value = dateFilter.from;
   dateToInput.value = dateFilter.to;
   syncDateFilterButton();
   const multiple = currentPins.length > 1;
-  labelInput.value = multiple ? `${currentPins.length} pins selected` : currentPin?.label || "";
-  labelView.textContent = multiple ? `${currentPins.length} pins selected` : currentPin?.label || "(unlabeled pin)";
+  const selectionLabel = followed ? `${currentPins.length} nearby pins` : `${currentPins.length} pins selected`;
+  labelInput.value = multiple ? selectionLabel : currentPin?.label || "";
+  labelView.textContent = multiple ? selectionLabel : currentPin?.label || "(unlabeled pin)";
   categoryInput.value = multiple ? "Combined gallery" : currentPin?.category || "";
   categoryView.textContent = multiple ? "Combined gallery" : currentPin?.category || "No category";
   labelInput.disabled = multiple;
@@ -90,6 +93,7 @@ export function closePinPanel() {
   currentPin = null;
   currentPins = [];
   currentPhotos = [];
+  followDirections = null;
   state.selectedPinId = null;
   state.selectedPinIds = [];
   onChangeCallback?.onOverlayUpdate?.(null, null);
@@ -125,7 +129,11 @@ async function refreshTimeline() {
   currentPhotos = Array.from(byId.values()).sort((a, b) => new Date(a.taken_at) - new Date(b.taken_at));
   renderCompass();
   renderTimeline();
-  onChangeCallback?.onOverlayUpdate?.(currentPhotos, directionFilter);
+  onChangeCallback?.onOverlayUpdate?.(currentPhotos, activeOverlayFilter());
+}
+
+function activeOverlayFilter() {
+  return followDirections ? { byPin: followDirections, width: parseFloat(widthInput.value) } : directionFilter;
 }
 
 // Gallery: large square tiles in chronological order (oldest first, so it
@@ -140,10 +148,14 @@ function renderTimeline() {
   const visible = currentPhotos.filter((p) => {
     if (!isWithinDateRange(p.taken_at)) return false;
     if (onlyUndirected) return p.direction_deg == null;
+    if (followDirections) {
+      const center = followDirections[p.pin_id];
+      return center == null || (p.direction_deg != null && isWithinArc(p.direction_deg, center, parseFloat(widthInput.value)));
+    }
     if (!directionFilter) return true;
     return p.direction_deg != null && isWithinArc(p.direction_deg, directionFilter.center, directionFilter.width);
   });
-  const filtered = onlyUndirected || directionFilter || dateFilter.from || dateFilter.to;
+  const filtered = onlyUndirected || followDirections || directionFilter || dateFilter.from || dateFilter.to;
   photoCountEl.textContent = filtered
     ? `${visible.length} of ${currentPhotos.length} photos`
     : `${currentPhotos.length} photo${currentPhotos.length === 1 ? "" : "s"}`;
@@ -155,6 +167,8 @@ function renderTimeline() {
       ? "Every photo at this pin has a direction set."
       : dateFilter.from || dateFilter.to
       ? "No photos in that date range."
+      : followDirections
+      ? "No photos from these pins face the selected point."
       : directionFilter
       ? "No photos in that direction."
       : "No photos assigned to this pin yet.";
@@ -243,7 +257,7 @@ function renderCompass() {
   const R = 90;
   compass.appendChild(svgEl("circle", { cx: 0, cy: 0, r: R, fill: "#faf9f6", stroke: "#c9c9c3" }));
 
-  if (directionFilter) {
+  if (directionFilter && !followDirections) {
     compass.appendChild(wedgePath(directionFilter.center, directionFilter.width, R));
     clearFilterBtn.classList.remove("hidden");
   } else {
@@ -252,7 +266,10 @@ function renderCompass() {
 
   for (const photo of currentPhotos) {
     if (photo.direction_deg == null) continue;
-    const inFilter = !directionFilter || isWithinArc(photo.direction_deg, directionFilter.center, directionFilter.width);
+    const followCenter = followDirections?.[photo.pin_id];
+    const inFilter = followDirections
+      ? followCenter == null || isWithinArc(photo.direction_deg, followCenter, parseFloat(widthInput.value))
+      : !directionFilter || isWithinArc(photo.direction_deg, directionFilter.center, directionFilter.width);
     const { dx: x1, dy: y1 } = headingToXY(photo.direction_deg, R * 0.55);
     const { dx: x2, dy: y2 } = headingToXY(photo.direction_deg, R * 0.92);
     compass.appendChild(
@@ -295,6 +312,7 @@ function wedgePath(center, width, r) {
 function setFilterFromEvent(e) {
   const pt = clientPointToSvg(compass, e.clientX, e.clientY);
   const width = parseFloat(widthInput.value);
+  followDirections = null;
   directionFilter = { center: xyToHeading(pt.x, pt.y), width };
   renderCompass();
   renderTimeline();
@@ -303,7 +321,7 @@ function setFilterFromEvent(e) {
 
 let dragging = false;
 compass.addEventListener("mousedown", (e) => {
-  if (currentPhotos.length === 0) return;
+  if (currentPhotos.length === 0 || followDirections) return;
   dragging = true;
   setFilterFromEvent(e);
 });
@@ -314,11 +332,11 @@ window.addEventListener("mouseup", () => {
   dragging = false;
 });
 widthInput.addEventListener("input", () => {
-  if (!directionFilter) return;
-  directionFilter.width = parseFloat(widthInput.value);
+  if (!directionFilter && !followDirections) return;
+  if (directionFilter) directionFilter.width = parseFloat(widthInput.value);
   renderCompass();
   renderTimeline();
-  onChangeCallback?.onOverlayUpdate?.(currentPhotos, directionFilter);
+  onChangeCallback?.onOverlayUpdate?.(currentPhotos, activeOverlayFilter());
 });
 clearFilterBtn.addEventListener("click", () => {
   directionFilter = null;

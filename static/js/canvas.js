@@ -15,6 +15,8 @@ const layerEditControls = document.getElementById("layerEditControls");
 const layerOpacity = document.getElementById("layerOpacity");
 const assignBanner = document.getElementById("assignModeBanner");
 const assignModeCount = document.getElementById("assignModeCount");
+const followModeBtn = document.getElementById("followModeBtn");
+const followPinLimit = document.getElementById("followPinLimit");
 
 let viewportEl = null;
 let sitePlanImgEl = null;
@@ -23,6 +25,7 @@ let wrapperImgEl = null;
 let resizeHandleEl = null;
 let rotateHandleEl = null;
 let pinsLayerEl = null;
+let followPoint = null;
 
 // pan/zoom of the whole map (site plan + floor plan layer + pins), applied
 // as a CSS transform on planViewport. Purely a view preference — not
@@ -150,6 +153,7 @@ export async function setFloorplans(list) {
 
 export async function selectFloorplan(id, opts = {}) {
   state.activeFloorplanId = id != null ? Number(id) : null;
+  followPoint = null;
   state.selectedPinId = null;
   state.selectedPinIds = [];
   closePinPanel();
@@ -283,7 +287,7 @@ function renderPins() {
       const latest = pin.indicator_direction_deg;
       // while this pin's gallery has a direction filter on, its fan shows
       // which way that wedge is pointing
-      const filter = state.selectedPinIds.includes(pin.id) ? overlayFilter : null;
+      const filter = state.selectedPinIds.includes(pin.id) ? overlayFilterForPin(pin.id) : null;
       for (const deg of dirs) {
         const arrow = document.createElement("div");
         arrow.className = "pin-arrow";
@@ -322,6 +326,15 @@ function renderPins() {
     el.addEventListener("mousedown", (e) => onPinMarkerMouseDown(e, pin, el));
     attachPinDropTarget(el, pin);
     pinsLayerEl.appendChild(el);
+  }
+  if (followPoint) {
+    const target = document.createElement("div");
+    target.className = "follow-target";
+    target.style.left = followPoint.x * 100 + "%";
+    target.style.top = followPoint.y * 100 + "%";
+    target.style.transform = `scale(${1 / zoom})`;
+    target.title = "Follow target";
+    pinsLayerEl.appendChild(target);
   }
 }
 
@@ -512,6 +525,15 @@ export function refreshSelectedPinOverlay(photos, filter) {
   if (changed && pinsLayerEl) renderPins();
 }
 
+function overlayFilterForPin(pinId) {
+  if (!overlayFilter) return null;
+  if (overlayFilter.byPin) {
+    const center = overlayFilter.byPin[pinId];
+    return center == null ? null : { center, width: overlayFilter.width };
+  }
+  return overlayFilter;
+}
+
 function handlePlanClick(clientX, clientY) {
   const fp = getActiveFloorplan();
   if (!fp) return;
@@ -520,6 +542,11 @@ function handlePlanClick(clientX, clientY) {
   const { x, y } = t.toLocal(px, py);
   if (x < 0 || x > 1 || y < 0 || y > 1) return;
 
+  if (state.followMode && !state.editMode) {
+    followPinsAt(x, y);
+    return;
+  }
+
   if (state.assignMode) {
     // in assign mode, only clicking an actual pin marker (onPinClick) does
     // anything; clicking empty plan space is a no-op.
@@ -527,6 +554,52 @@ function handlePlanClick(clientX, clientY) {
   }
   if (state.editMode) createPinAt(fp.id, x, y);
 }
+
+async function followPinsAt(x, y) {
+  const limit = Math.max(1, Math.min(50, Number(followPinLimit.value) || 5));
+  followPinLimit.value = String(limit);
+  const fp = getActiveFloorplan();
+  const transform = getTransform(fp, container);
+  const targetWorld = transform.toScreen(x, y);
+  const nearest = state.pins
+    .map((pin) => {
+      const pinWorld = transform.toScreen(pin.x, pin.y);
+      return { pin, pinWorld, distance: Math.hypot(pinWorld.x - targetWorld.x, pinWorld.y - targetWorld.y) };
+    })
+    .filter(({ distance }) => distance > 1e-6)
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, limit);
+  if (!nearest.length) {
+    toast("There are no pins on this level.", true);
+    return;
+  }
+
+  followPoint = { x, y };
+  state.selectedPinIds = nearest.map(({ pin }) => pin.id);
+  state.selectedPinId = state.selectedPinIds[0];
+  const directions = {};
+  for (const { pin, pinWorld } of nearest) {
+    directions[pin.id] = xyToHeading(targetWorld.x - pinWorld.x, targetWorld.y - pinWorld.y);
+  }
+  renderPins();
+  await openPinPanel(nearest.map(({ pin }) => pin), { followDirections: directions });
+}
+
+followModeBtn.addEventListener("click", () => {
+  state.followMode = !state.followMode;
+  followModeBtn.classList.toggle("active", state.followMode);
+  followModeBtn.setAttribute("aria-pressed", String(state.followMode));
+  followModeBtn.textContent = state.followMode ? "Following" : "Follow";
+  if (!state.followMode) {
+    followPoint = null;
+    closePinPanel();
+    if (pinsLayerEl) renderPins();
+  }
+  toast(state.followMode ? "Click a point on the map to follow it." : "Follow mode off");
+});
+followPinLimit.addEventListener("change", () => {
+  if (state.followMode && followPoint) followPinsAt(followPoint.x, followPoint.y);
+});
 
 // --- pan (left-drag) + zoom (wheel) ------------------------------------
 // Left-drag both pans the map and places pins, so a movement threshold
@@ -734,6 +807,10 @@ async function onPinClick(pin, additive = false) {
     }
     return;
   }
+  if (state.followMode && !state.editMode) {
+    await followPinsAt(pin.x, pin.y);
+    return;
+  }
   if (additive) {
     const selected = new Set(state.selectedPinIds);
     if (selected.has(pin.id)) selected.delete(pin.id);
@@ -929,7 +1006,17 @@ deleteFloorplanBtn.addEventListener("click", async () => {
 });
 
 document.addEventListener("mode-changed", (e) => {
-  if (e.detail.editMode) return;
+  if (e.detail.editMode) {
+    const hadFollowTarget = !!followPoint;
+    state.followMode = false;
+    followPoint = null;
+    followModeBtn.classList.remove("active");
+    followModeBtn.setAttribute("aria-pressed", "false");
+    followModeBtn.textContent = "Follow";
+    if (hadFollowTarget) closePinPanel();
+    if (pinsLayerEl) renderPins();
+    return;
+  }
   cancelAssignMode();
   setLayerEditMode(false);
   setPinMovable(null);

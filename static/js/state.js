@@ -5,6 +5,7 @@ export const state = {
   selectedPinId: null,
   selectedPinIds: [],
   editMode: false,
+  followMode: false,
   layerEditMode: false,
   assignMode: null, // { photoIds: number[] } while "click a pin to assign" is active
   // photo ids currently being dragged onto a pin. Kept here rather than

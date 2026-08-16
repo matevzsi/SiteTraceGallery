@@ -313,6 +313,8 @@ input[type="range"]::-webkit-slider-thumb {
 .topbar-spacer { flex: 1 1 auto; min-width: 0.5rem; }
 .floorplan-actions { padding-left: 0.6rem; border-left: 1px solid var(--border); }
 .view-mode .edit-only { display: none !important; }
+.view-only { display: none !important; }
+.view-mode .view-only { display: flex !important; }
 
 .icon-moon { display: none; }
 :root[data-theme="dark"] .icon-sun { display: none; }
@@ -454,6 +456,36 @@ input[type="range"]::-webkit-slider-thumb {
   box-shadow: var(--elev-3);
   gap: 2px;
 }
+.follow-controls {
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--border);
+}
+.follow-controls label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  color: var(--ink-3);
+}
+.follow-controls input { width: 42px; padding: 0.2rem; font-size: 0.75rem; }
+.follow-target {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  margin: -12px 0 0 -12px;
+  border: 3px solid var(--info);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--info) 18%, transparent);
+  box-shadow: 0 0 0 5px var(--info-soft);
+  pointer-events: none;
+}
+.follow-target::before,
+.follow-target::after { content: ""; position: absolute; background: var(--info); }
+.follow-target::before { width: 2px; height: 32px; left: 8px; top: -7px; }
+.follow-target::after { width: 32px; height: 2px; left: -7px; top: 8px; }
 .view-controls .btn { border-color: transparent; background: transparent; box-shadow: none; color: var(--ink-2); }
 .view-controls .btn:hover { background: var(--surface-3); color: var(--ink); }
 

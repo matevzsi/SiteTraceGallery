@@ -99,6 +99,12 @@
       </div>
 
       <div class="view-controls map-float map-float-br">
+        <div class="follow-controls view-only">
+          <button id="followModeBtn" class="btn btn-sm" type="button" aria-pressed="false" title="Select a point and show photos facing it">Follow</button>
+          <label title="Maximum number of nearby pins">Pins
+            <input id="followPinLimit" type="number" min="1" max="50" value="5">
+          </label>
+        </div>
         <button id="zoomInBtn" class="btn btn-icon" type="button" title="Zoom in" aria-label="Zoom in">
           <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
         </button>

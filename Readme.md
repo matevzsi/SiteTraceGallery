@@ -5,8 +5,30 @@ photos (interior and exterior) of a house build. Photos are pinned to a location
 on a floor plan, tagged with an approximate camera direction, and browsable as a
 per-location timeline instead of a flat photo dump.
 
-This is a **personal, single-user, locally-run tool** — no cloud hosting, no
-accounts, no multi-tenancy. Runs on `localhost` via a small local server.
+This is a **personal, single-user, self-hosted tool** — no cloud services,
+accounts, or multi-tenancy. It can run directly on a workstation or in Docker
+on a home server. Because SiteTrace has no authentication, remote access should
+be limited to a trusted LAN or private VPN.
+
+## Current highlights
+
+- **Safe view mode by default.** Browsing cannot create, move, reassign, import,
+  or delete data. Switch explicitly to Edit when changes are needed.
+- **Timeline gallery.** Browse one pin or Ctrl/Shift-click several pins for one
+  combined chronological gallery. Resize the gallery from its left edge to
+  show more columns.
+- **Persistent filtering.** Direction wedge, wedge width, inclusive from/to
+  dates, and the undirected-photo view make large timelines manageable. Date
+  and direction settings remain active while switching pins.
+- **Follow mode.** Click a target on the plan to find nearby pins and see only
+  the photos taken toward that point.
+- **Photo detail navigation.** Use the hover arrows or keyboard Left/Right keys
+  to move through the current filtered gallery without closing the photo.
+- **Mobile-friendly map.** One-finger pan, two-finger pinch zoom, tap support,
+  constant-size pin markers, and portrait cover sizing keep the plan usable on
+  phones and tablets.
+- **Local-first storage and Docker support.** Photos remain as files, structure
+  stays in SQLite, and all runtime storage can be volume-mounted for backup.
 
 ---
 
@@ -18,20 +40,23 @@ accounts, no multi-tenancy. Runs on `localhost` via a small local server.
 - Floor plan selector is a segmented row of toggle buttons floating over
   the top of the map (only one active at a time); the site plan is always
   present underneath whichever level is selected.
-- Click on a floor plan to drop a **pin** representing a physical location
-  (e.g. "Kitchen", "Southeast corner", "Garage"). Pin is referenced to the floor plane image.
+- Switch to Edit and click a floor plan to drop a **pin** representing a
+  physical location (e.g. "Kitchen", "Southeast corner", "Garage"). The pin
+  is referenced to the floor-plan image; the same gesture only browses in
+  View mode.
 - The map (site plan + selected floor plan + pins) is pannable (left-drag or
   one-finger touch drag) and zoomable (scroll wheel toward the cursor,
   two-finger pinch on a touchscreen, or floating +/−/reset
   buttons) so large or detailed plans stay usable. Pins, their labels and
   the direction arrows hold a constant screen size at any zoom level, like
   map POI markers.
-- Import photos in bulk; assign each photo to a pin — either by selecting
-  photos and clicking a pin, or by dragging photos straight onto one.
+- In Edit mode, import photos in bulk and assign each photo to a pin — either
+  by selecting photos and clicking a pin, or by dragging photos straight onto
+  one.
 - Each photo also gets an approximate **camera direction** (which way the
   camera was facing), shown as an arrow on the plan at the pin (when the photo is selected)
-- Click a pin → see all photos assigned to it as a gallery, sorted
-  chronologically.
+- Click a pin to see its photos chronologically; modifier-click more pins to
+  enter a combined gallery across locations.
 
 ---
 
@@ -49,6 +74,45 @@ accounts, no multi-tenancy. Runs on `localhost` via a small local server.
   `exif.items()`, or the real shot date is silently missed and every photo
   falls back to file mtime.
 - **No cloud services, no external APIs required to function.**
+
+---
+
+## Running SiteTrace
+
+### Directly with Python
+
+```bash
+pip install -r requirements.txt
+python app.py
+```
+
+Open `http://127.0.0.1:5000`.
+
+### With Docker Compose
+
+Set the host directory that should hold SiteTrace's managed photo originals:
+
+```dotenv
+# .env
+SITETRACE_PHOTOS_DIR=/srv/sitetrace/photos
+```
+
+Then build and start:
+
+```bash
+docker compose up -d --build
+```
+
+The supplied Compose configuration stores the database, floorplans, and
+thumbnails under `./docker-data` and mounts `SITETRACE_PHOTOS_DIR` at
+`/data/photos`. That directory is managed storage: placing unrelated images in
+it does not import them into the database. Mount a separate source directory
+and use its container path in the Import dialog when importing an existing
+collection.
+
+Port `5000` is published for LAN access. Do not expose it directly to the
+public internet; use a firewall and a private VPN such as WireGuard or
+Tailscale.
 
 ---
 
@@ -166,6 +230,19 @@ would make adding it later painful.
 
 ## Features (v1 scope)
 
+### View and edit modes
+
+- SiteTrace starts in **View** mode on every page load. The View/Edit button
+  lives at the top right and mode is intentionally not remembered between
+  sessions.
+- View mode is read-only: it prevents new pin placement, position unlocking,
+  category/floor edits, floor-plan add/replace/align/delete operations, photo
+  import, inbox drag-and-drop, assignment, deletion, direction edits, caption
+  edits, and photo reassignment. Editable category inputs become plain labels,
+  and mutation controls are hidden rather than merely disabled.
+- Edit mode restores the complete organization workflow. Returning to View
+  cancels transient assignment, layer-alignment, and unlocked-pin states.
+
 ### 0. Site plan management
 - Start with uploading the site plan.
 - Its image can be replaced later without disturbing floor plans, pins, or
@@ -243,6 +320,10 @@ would make adding it later painful.
   wedge dim instead.
 - Pins, their labels and their direction fans hold a constant screen size
   regardless of map zoom.
+- Multiple pins can be selected on the active level. Click normally to replace
+  the selection; Ctrl-, Shift-, or Command-click adds or removes a pin. The
+  gallery combines photos from every selected pin and sorts the result by
+  capture time.
 
 ### 3. Photo import
 - Bulk import from a local folder: the user provides a folder path on the
@@ -312,6 +393,12 @@ would make adding it later painful.
   photos, and going back out to the gallery between each one is most of the
   work. It reports when nothing is left to tag, and is unavailable for
   inbox photos, which have no pin gallery to walk.
+- Opening a gallery tile keeps the current filtered gallery as the photo-detail
+  navigation sequence. Keyboard Left/Right and previous/next buttons at the
+  image edges move through it. The buttons stay out of the way until the image
+  is hovered or keyboard-focused.
+- In View mode, pin mapping, caption, and direction controls are read-only and
+  the Save/direction action buttons are hidden.
 
 ### 6. Timeline view
 - Click a pin → open a gallery of all photos assigned to that pin (right
@@ -323,6 +410,11 @@ would make adding it later painful.
   under the compass angle filter, so which ones still need one has to be
   visible at a glance.
 - Click through to full resolution from a photo's detail view.
+- The right gallery panel can be resized by dragging its left edge. Its
+  responsive grid automatically adds columns as more width becomes available.
+- Pin identity/category/floor/position controls occupy the left side of the
+  gallery header, with the direction compass and wedge-width control beside
+  them. On narrow screens the two columns stack to remain touch-friendly.
 - Around the pin's compass, show small arrows indicating the directions the
   assigned photos were taken from, and a draggable pie-wedge angle filter
   that narrows the gallery to photos taken within that direction range. The
@@ -332,6 +424,16 @@ would make adding it later painful.
   and each filter has its own clear action. Both filters stay active while
   switching pins so the same time-and-direction comparison can be carried
   across locations.
+- View mode has a **Follow** tool. Clicking a point on the active plan selects
+  up to a user-set number of the nearest pins and opens their combined
+  chronological gallery, keeping only photos whose heading faces the clicked
+  point. The direction wedge width supplies the per-pin bearing tolerance;
+  the target point and participating pins remain marked on the plan, and the
+  date filter continues to narrow the combined result.
+- The Follow pin-count control caps how many nearest pins participate. Changing
+  it recalculates the current target immediately. Wedge width is applied around
+  each pin's own bearing to the target—not as one shared compass bearing—and
+  turning Follow off clears the target and combined gallery.
 - A **"Show only unassigned"** checkbox directly above the gallery narrows
   it to photos with no direction set — the working set for a tagging pass,
   paired with "Set direction and next image". It overrides the wedge filter
@@ -343,7 +445,7 @@ would make adding it later painful.
 ### 7. Basic navigation
 - Top bar: app title, floor plan management actions (add / replace image /
   align layer), "Unassigned" (opens the left panel) with its count,
-  "Import photos", and a light/dark theme toggle.
+  "Import photos", View/Edit mode, and a light/dark theme toggle.
 - Main view (site plan + selected floor plan + pins) fills the available
   screen space below the top bar, preserving the site plan's aspect ratio.
   Width always fills the stage; if the site plan's aspect ratio makes that
@@ -357,6 +459,14 @@ would make adding it later painful.
   page navigation); the map remains visible alongside it.
 - Unassigned photos panel (left side) and pin gallery panel (right side) can
   be open at the same time without covering the top bar's controls.
+- Touch navigation mirrors a map application: one finger pans, two fingers
+  pinch around their midpoint, and a stationary tap selects or places a pin
+  according to the current mode. On narrow portrait screens, the landscape
+  plan uses a cover-style initial size so it fills the available height while
+  preserving its aspect ratio; the excess width remains reachable by panning.
+- Dynamic viewport sizing follows expanding/collapsing mobile browser chrome,
+  keeping the top bar, map controls, and internal panel scrolling within the
+  currently visible screen.
 
 ### 8. Auto-suggested pin grouping (v2)
 
