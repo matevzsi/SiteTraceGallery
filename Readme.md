@@ -20,8 +20,9 @@ accounts, no multi-tenancy. Runs on `localhost` via a small local server.
   present underneath whichever level is selected.
 - Click on a floor plan to drop a **pin** representing a physical location
   (e.g. "Kitchen", "Southeast corner", "Garage"). Pin is referenced to the floor plane image.
-- The map (site plan + selected floor plan + pins) is pannable (left-drag)
-  and zoomable (scroll wheel toward the cursor, or floating +/−/reset
+- The map (site plan + selected floor plan + pins) is pannable (left-drag or
+  one-finger touch drag) and zoomable (scroll wheel toward the cursor,
+  two-finger pinch on a touchscreen, or floating +/−/reset
   buttons) so large or detailed plans stay usable. Pins, their labels and
   the direction arrows hold a constant screen size at any zoom level, like
   map POI markers.

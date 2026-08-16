@@ -176,6 +176,10 @@ function ensureDom() {
     container.appendChild(viewportEl);
     container.addEventListener("wheel", onContainerWheel, { passive: false });
     container.addEventListener("mousedown", onContainerMouseDown);
+    container.addEventListener("touchstart", onContainerTouchStart, { passive: false });
+    container.addEventListener("touchmove", onContainerTouchMove, { passive: false });
+    container.addEventListener("touchend", onContainerTouchEnd, { passive: false });
+    container.addEventListener("touchcancel", onContainerTouchCancel, { passive: false });
   }
 
   if (!sitePlanImgEl) {
@@ -570,6 +574,123 @@ function onContainerMouseUp(e) {
   container.classList.remove("panning");
   if (panState && !panState.moved) handlePlanClick(e.clientX, e.clientY);
   panState = null;
+}
+
+// Touch navigation is handled separately from mouse navigation because a
+// pinch has two anchors: its changing midpoint pans the map while its changing
+// distance zooms it. Keeping the content point below the initial midpoint
+// fixed makes the gesture feel like a native map rather than a centred zoom.
+let touchState = null;
+
+function touchPoint(touch) {
+  const rect = container.getBoundingClientRect();
+  return { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+}
+
+function touchMidpoint(a, b) {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}
+
+function touchDistance(a, b) {
+  return Math.hypot(b.x - a.x, b.y - a.y);
+}
+
+function beginSingleTouch(touch, moved = false) {
+  const point = touchPoint(touch);
+  touchState = {
+    kind: "pan",
+    startX: point.x,
+    startY: point.y,
+    startClientX: touch.clientX,
+    startClientY: touch.clientY,
+    startPanX: panX,
+    startPanY: panY,
+    moved,
+  };
+}
+
+function beginPinch(touches) {
+  const a = touchPoint(touches[0]);
+  const b = touchPoint(touches[1]);
+  const midpoint = touchMidpoint(a, b);
+  touchState = {
+    kind: "pinch",
+    startDistance: Math.max(1, touchDistance(a, b)),
+    startZoom: zoom,
+    contentX: (midpoint.x - panX) / zoom,
+    contentY: (midpoint.y - panY) / zoom,
+  };
+  container.classList.add("panning");
+}
+
+function onContainerTouchStart(e) {
+  if (!getSitePlan() || state.layerEditMode) return;
+  if (e.touches.length >= 2) {
+    e.preventDefault();
+    beginPinch(e.touches);
+    return;
+  }
+  // Leave pin taps to their existing click handler. A second finger can still
+  // promote the gesture to a pinch in the branch above.
+  if (e.target.closest(".pin-marker")) return;
+  e.preventDefault();
+  beginSingleTouch(e.touches[0]);
+}
+
+function onContainerTouchMove(e) {
+  if (!touchState || !getSitePlan()) return;
+  e.preventDefault();
+  if (e.touches.length >= 2) {
+    if (touchState.kind !== "pinch") beginPinch(e.touches);
+    const a = touchPoint(e.touches[0]);
+    const b = touchPoint(e.touches[1]);
+    const midpoint = touchMidpoint(a, b);
+    const newZoom = Math.min(
+      MAX_ZOOM,
+      Math.max(MIN_ZOOM, touchState.startZoom * touchDistance(a, b) / touchState.startDistance),
+    );
+    panX = midpoint.x - touchState.contentX * newZoom;
+    panY = midpoint.y - touchState.contentY * newZoom;
+    zoom = newZoom;
+    applyViewportTransform();
+    return;
+  }
+  if (touchState.kind !== "pan" || e.touches.length !== 1) return;
+  const point = touchPoint(e.touches[0]);
+  const dx = point.x - touchState.startX;
+  const dy = point.y - touchState.startY;
+  if (!touchState.moved && Math.hypot(dx, dy) > PAN_THRESHOLD_PX) {
+    touchState.moved = true;
+    container.classList.add("panning");
+  }
+  if (touchState.moved) {
+    panX = touchState.startPanX + dx;
+    panY = touchState.startPanY + dy;
+    applyViewportTransform();
+  }
+}
+
+function onContainerTouchEnd(e) {
+  if (!touchState) return;
+  e.preventDefault();
+  if (e.touches.length >= 2) {
+    beginPinch(e.touches);
+  } else if (e.touches.length === 1) {
+    // Continue smoothly as a pan if one finger remains after a pinch.
+    beginSingleTouch(e.touches[0], true);
+  } else {
+    const ended = touchState;
+    touchState = null;
+    container.classList.remove("panning");
+    if (ended.kind === "pan" && !ended.moved) {
+      handlePlanClick(ended.startClientX, ended.startClientY);
+    }
+  }
+}
+
+function onContainerTouchCancel() {
+  touchState = null;
+  container.classList.remove("panning");
 }
 
 document.getElementById("resetViewBtn").addEventListener("click", resetView);
