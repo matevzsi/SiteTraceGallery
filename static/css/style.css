@@ -131,7 +131,13 @@
 
 * { box-sizing: border-box; }
 
-html, body { height: 100%; }
+html {
+  height: 100%;
+  /* Mobile browser chrome changes the visible viewport while scrolling.
+     dvh follows that visible area; the percentage remains the fallback for
+     older browsers. */
+  height: 100dvh;
+}
 
 body {
   margin: 0;
@@ -143,6 +149,9 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  min-height: 100dvh;
+  height: 100%;
+  overflow: hidden;
   -webkit-font-smoothing: antialiased;
 }
 
