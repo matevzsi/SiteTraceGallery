@@ -7,10 +7,25 @@ import {
 } from "./canvas.js";
 import { setHooks } from "./pinPanel.js";
 import { loadUnassigned } from "./unassigned.js";
+import { state } from "./state.js";
 import "./dialogs.js";
 import "./floorplanModal.js";
 import "./importDialog.js";
 import "./photoModal.js";
+
+// Browsing is the safe startup state. Mode is deliberately session-only so
+// every reload returns to a non-mutating UI.
+const modeToggleBtn = document.getElementById("modeToggleBtn");
+function setEditMode(on) {
+  state.editMode = !!on;
+  document.body.classList.toggle("view-mode", !state.editMode);
+  modeToggleBtn.textContent = state.editMode ? "View" : "Edit";
+  modeToggleBtn.title = state.editMode ? "Switch to view mode" : "Switch to edit mode";
+  modeToggleBtn.setAttribute("aria-pressed", String(state.editMode));
+  document.dispatchEvent(new CustomEvent("mode-changed", { detail: { editMode: state.editMode } }));
+}
+modeToggleBtn.addEventListener("click", () => setEditMode(!state.editMode));
+setEditMode(false);
 
 // canvas.js imports the pin panel, so the panel talks back through these
 // hooks rather than importing canvas.js and closing the cycle

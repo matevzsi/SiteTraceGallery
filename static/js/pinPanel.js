@@ -6,7 +6,9 @@ import { openPhotoModal } from "./photoModal.js";
 
 const panel = document.getElementById("pinPanel");
 const labelInput = document.getElementById("pinLabelInput");
+const labelView = document.getElementById("pinLabelView");
 const categoryInput = document.getElementById("pinCategoryInput");
+const categoryView = document.getElementById("pinCategoryView");
 const photoCountEl = document.getElementById("pinPhotoCount");
 const onlyUndirectedInput = document.getElementById("pinOnlyUndirected");
 const floorSelect = document.getElementById("pinFloorSelect");
@@ -19,10 +21,16 @@ const compass = document.getElementById("pinCompass");
 const widthInput = document.getElementById("pinCompassWidth");
 const clearFilterBtn = document.getElementById("pinCompassClearFilterBtn");
 const timelineEl = document.getElementById("pinTimeline");
+const resizeHandle = document.getElementById("pinPanelResizeHandle");
+const dateFromInput = document.getElementById("pinDateFrom");
+const dateToInput = document.getElementById("pinDateTo");
+const clearDateFilterBtn = document.getElementById("pinDateClearFilterBtn");
 
 let currentPin = null;
+let currentPins = [];
 let currentPhotos = [];
 let directionFilter = null; // { center, width } in degrees
+let dateFilter = { from: "", to: "" }; // kept while switching pins
 let pendingDeletePinId = null;
 let positionUnlocked = false;
 let onChangeCallback = null; // set by canvas.js consumers via setHooks
@@ -31,13 +39,24 @@ export function setHooks({ onPinsChanged, onOverlayUpdate, onPinMovableChange, o
   onChangeCallback = { onPinsChanged, onOverlayUpdate, onPinMovableChange, onPinFloorChange };
 }
 
-export async function openPinPanel(pin) {
-  currentPin = pin;
-  directionFilter = null;
-  clearFilterBtn.classList.add("hidden");
-  labelInput.value = pin.label || "";
-  categoryInput.value = pin.category || "";
-  populateFloorSelect(pin);
+export async function openPinPanel(pins) {
+  currentPins = Array.isArray(pins) ? pins : [pins];
+  currentPin = currentPins.length === 1 ? currentPins[0] : null;
+  if (!currentPins.length) return closePinPanel();
+  dateFromInput.value = dateFilter.from;
+  dateToInput.value = dateFilter.to;
+  syncDateFilterButton();
+  const multiple = currentPins.length > 1;
+  labelInput.value = multiple ? `${currentPins.length} pins selected` : currentPin?.label || "";
+  labelView.textContent = multiple ? `${currentPins.length} pins selected` : currentPin?.label || "(unlabeled pin)";
+  categoryInput.value = multiple ? "Combined gallery" : currentPin?.category || "";
+  categoryView.textContent = multiple ? "Combined gallery" : currentPin?.category || "No category";
+  labelInput.disabled = multiple;
+  categoryInput.disabled = multiple;
+  floorSelect.disabled = multiple || !state.editMode;
+  moveBtn.classList.toggle("hidden", multiple || !state.editMode);
+  deleteBtn.classList.toggle("hidden", multiple || !state.editMode);
+  populateFloorSelect(currentPin || currentPins[0]);
   setPositionUnlocked(false); // every pin opens locked
   panel.classList.remove("hidden");
   await refreshTimeline();
@@ -57,7 +76,7 @@ function populateFloorSelect(pin) {
 }
 
 floorSelect.addEventListener("change", () => {
-  if (!currentPin) return;
+  if (!state.editMode || !currentPin) return;
   const targetId = Number(floorSelect.value);
   if (targetId === currentPin.floorplan_id) return;
   // canvas.js owns the layer transforms, so it does the re-projection and
@@ -69,8 +88,10 @@ export function closePinPanel() {
   panel.classList.add("hidden");
   setPositionUnlocked(false);
   currentPin = null;
+  currentPins = [];
   currentPhotos = [];
   state.selectedPinId = null;
+  state.selectedPinIds = [];
   onChangeCallback?.onOverlayUpdate?.(null, null);
   onChangeCallback?.onPinsChanged?.();
 }
@@ -91,15 +112,17 @@ function setPositionUnlocked(on) {
 }
 
 moveBtn.addEventListener("click", () => {
-  if (!currentPin) return;
+  if (!state.editMode || !currentPin) return;
   setPositionUnlocked(!positionUnlocked);
   if (positionUnlocked) toast("Drag the pin on the plan to move it.");
 });
 
 async function refreshTimeline() {
-  if (!currentPin) return;
-  const res = await api.pinPhotos(currentPin.id);
-  currentPhotos = res.photos;
+  if (!currentPins.length) return;
+  const results = await Promise.all(currentPins.map((pin) => api.pinPhotos(pin.id)));
+  const byId = new Map();
+  for (const result of results) for (const photo of result.photos) byId.set(photo.id, photo);
+  currentPhotos = Array.from(byId.values()).sort((a, b) => new Date(a.taken_at) - new Date(b.taken_at));
   renderCompass();
   renderTimeline();
   onChangeCallback?.onOverlayUpdate?.(currentPhotos, directionFilter);
@@ -115,11 +138,12 @@ function renderTimeline() {
   // the list is restricted to photos that have none — "only unassigned"
   // wins rather than the two combining into an always-empty result
   const visible = currentPhotos.filter((p) => {
+    if (!isWithinDateRange(p.taken_at)) return false;
     if (onlyUndirected) return p.direction_deg == null;
     if (!directionFilter) return true;
     return p.direction_deg != null && isWithinArc(p.direction_deg, directionFilter.center, directionFilter.width);
   });
-  const filtered = onlyUndirected || directionFilter;
+  const filtered = onlyUndirected || directionFilter || dateFilter.from || dateFilter.to;
   photoCountEl.textContent = filtered
     ? `${visible.length} of ${currentPhotos.length} photos`
     : `${currentPhotos.length} photo${currentPhotos.length === 1 ? "" : "s"}`;
@@ -129,6 +153,8 @@ function renderTimeline() {
     empty.className = "grid-empty";
     empty.textContent = onlyUndirected
       ? "Every photo at this pin has a direction set."
+      : dateFilter.from || dateFilter.to
+      ? "No photos in that date range."
       : directionFilter
       ? "No photos in that direction."
       : "No photos assigned to this pin yet.";
@@ -164,7 +190,7 @@ function renderTimeline() {
       item.appendChild(dot);
     }
 
-    item.addEventListener("click", () => openPhotoModal(photo.id, { onSaved: refreshTimeline }));
+    item.addEventListener("click", () => openPhotoModal(photo.id, { onSaved: refreshTimeline, photoIds: visible.map((p) => p.id) }));
     frag.appendChild(item);
   }
   timelineEl.appendChild(frag);
@@ -174,6 +200,41 @@ function isWithinArc(deg, center, width) {
   const diff = Math.abs(((deg - center + 540) % 360) - 180);
   return diff <= width / 2;
 }
+
+function isWithinDateRange(takenAt) {
+  if (!dateFilter.from && !dateFilter.to) return true;
+  if (!takenAt) return false;
+  const timestamp = new Date(takenAt).getTime();
+  if (Number.isNaN(timestamp)) return false;
+  if (dateFilter.from) {
+    const from = new Date(`${dateFilter.from}T00:00:00`).getTime();
+    if (timestamp < from) return false;
+  }
+  if (dateFilter.to) {
+    const to = new Date(`${dateFilter.to}T23:59:59.999`).getTime();
+    if (timestamp > to) return false;
+  }
+  return true;
+}
+
+function syncDateFilterButton() {
+  clearDateFilterBtn.classList.toggle("hidden", !dateFilter.from && !dateFilter.to);
+}
+
+function updateDateFilter() {
+  dateFilter = { from: dateFromInput.value, to: dateToInput.value };
+  syncDateFilterButton();
+  renderTimeline();
+}
+dateFromInput.addEventListener("change", updateDateFilter);
+dateToInput.addEventListener("change", updateDateFilter);
+clearDateFilterBtn.addEventListener("click", () => {
+  dateFilter = { from: "", to: "" };
+  dateFromInput.value = "";
+  dateToInput.value = "";
+  syncDateFilterButton();
+  renderTimeline();
+});
 
 // --- compass: direction ticks + draggable angle-filter wedge ---------
 
@@ -275,7 +336,7 @@ onlyUndirectedInput.addEventListener("change", renderTimeline);
 // --- label / category editing ----------------------------------------
 
 async function saveLabelCategory() {
-  if (!currentPin) return;
+  if (!state.editMode || !currentPin) return;
   try {
     const updated = await api.updatePin(currentPin.id, {
       label: labelInput.value.trim(),
@@ -294,7 +355,7 @@ categoryInput.addEventListener("change", saveLabelCategory);
 // --- delete pin --------------------------------------------------------
 
 deleteBtn.addEventListener("click", async () => {
-  if (!currentPin) return;
+  if (!state.editMode || !currentPin) return;
   const ok = await confirmDialog({
     title: "Delete pin",
     message: `Delete "${currentPin.label || "(unlabeled pin)"}"? This cannot be undone.`,
@@ -317,6 +378,7 @@ deleteBtn.addEventListener("click", async () => {
 });
 
 document.getElementById("pinDeleteUnassignBtn").addEventListener("click", async () => {
+  if (!state.editMode) return;
   try {
     await api.deletePin(pendingDeletePinId, "unassign");
     hideModal("pinDeleteModal");
@@ -326,6 +388,7 @@ document.getElementById("pinDeleteUnassignBtn").addEventListener("click", async 
   }
 });
 document.getElementById("pinDeleteAlsoPhotosBtn").addEventListener("click", async () => {
+  if (!state.editMode) return;
   try {
     await api.deletePin(pendingDeletePinId, "delete");
     hideModal("pinDeleteModal");
@@ -347,4 +410,35 @@ async function afterPinDeleted() {
 closeBtn.addEventListener("click", closePinPanel);
 document.addEventListener("escape-pressed", () => {
   if (!panel.classList.contains("hidden")) closePinPanel();
+});
+
+document.addEventListener("mode-changed", (e) => {
+  const editing = e.detail.editMode;
+  labelInput.classList.toggle("hidden", !editing);
+  categoryInput.classList.toggle("hidden", !editing);
+  labelView.classList.toggle("hidden", editing);
+  categoryView.classList.toggle("hidden", editing);
+  floorSelect.disabled = !editing || currentPins.length !== 1;
+  moveBtn.classList.toggle("hidden", !editing || currentPins.length !== 1);
+  deleteBtn.classList.toggle("hidden", !editing || currentPins.length !== 1);
+  if (!editing) setPositionUnlocked(false);
+});
+
+// Drag the panel's left edge; the right edge stays attached to the viewport.
+// A CSS variable keeps layout and grid reflow automatic as the width changes.
+let resizingPanel = false;
+resizeHandle.addEventListener("mousedown", (e) => {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  resizingPanel = true;
+  resizeHandle.classList.add("resizing");
+});
+window.addEventListener("mousemove", (e) => {
+  if (!resizingPanel) return;
+  const width = Math.max(340, Math.min(window.innerWidth * 0.92, window.innerWidth - e.clientX));
+  panel.style.setProperty("--pin-panel-width", `${Math.round(width)}px`);
+});
+window.addEventListener("mouseup", () => {
+  resizingPanel = false;
+  resizeHandle.classList.remove("resizing");
 });

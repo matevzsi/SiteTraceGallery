@@ -15,7 +15,7 @@
   </script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
-<body>
+<body class="view-mode">
   <header class="topbar">
     <div class="brand">
       <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
@@ -26,7 +26,7 @@
       <h1>SiteTrace</h1>
     </div>
 
-    <div class="topbar-group floorplan-actions" role="group" aria-label="Floor plan">
+    <div class="topbar-group floorplan-actions edit-only" role="group" aria-label="Floor plan">
       <button id="addFloorplanBtn" class="btn" type="button">
         <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
         Add floor plan
@@ -51,10 +51,11 @@
         <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="m2 10.5 3-2.6 3.2 2.8L11 8.6 14 11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
         Unassigned <span id="unassignedCount" class="badge">0</span>
       </button>
-      <button id="importBtn" class="btn btn-primary" type="button">
+      <button id="importBtn" class="btn btn-primary edit-only" type="button">
         <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 10.5V2.5m0 0L5.2 5.3M8 2.5l2.8 2.8M2.5 10v2.5a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         Import photos
       </button>
+      <button id="modeToggleBtn" class="btn" type="button" aria-pressed="false" title="Switch to edit mode">Edit</button>
       <button id="themeToggleBtn" class="btn btn-icon" type="button" title="Toggle dark mode" aria-label="Toggle dark mode">
         <svg class="icon icon-sun" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 1v1.6M8 13.4V15M15 8h-1.6M2.6 8H1m11-5-1.1 1.1M5.1 10.9 4 12m8 0-1.1-1.1M5.1 5.1 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
         <svg class="icon icon-moon" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.4 9.8A5.8 5.8 0 0 1 6.2 2.6a5.8 5.8 0 1 0 7.2 7.2z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
@@ -73,7 +74,7 @@
             </svg>
             <h2>Start with a site plan</h2>
             <p>Upload the surroundings image — floor plans then sit on top of it, and pins go wherever the work is.</p>
-            <button id="addSitePlanBtn" class="btn btn-primary btn-lg" type="button">Upload site plan</button>
+            <button id="addSitePlanBtn" class="btn btn-primary btn-lg edit-only" type="button">Upload site plan</button>
           </div>
         </div>
       </div>
@@ -124,8 +125,8 @@
           <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8 9.3 5 12.6 6l-3.3 1L8 10.2 6.7 7 3.4 6l3.3-1zM12.8 10l.6 1.5 1.4.6-1.4.6-.6 1.5-.6-1.5-1.4-.6 1.4-.6z" fill="currentColor"/></svg>
           <span id="autoSuggestLabel">Auto suggest</span>
         </button>
-        <button id="selectAllBtn" class="btn btn-sm" type="button">Select all</button>
-        <button id="clearSelectionBtn" class="btn btn-sm" type="button">Clear</button>
+        <button id="selectAllBtn" class="btn btn-sm edit-only" type="button">Select all</button>
+        <button id="clearSelectionBtn" class="btn btn-sm edit-only" type="button">Clear</button>
         <div class="grid-zoom">
           <button id="gridZoomOutBtn" class="btn btn-icon btn-sm" type="button" title="Smaller thumbnails" aria-label="Smaller thumbnails">
             <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8h9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
@@ -138,25 +139,30 @@
       <div id="unassignedGrid" class="photo-grid"></div>
       <div class="panel-footer">
         <button id="loadMoreBtn" class="btn btn-sm hidden" type="button">Load more</button>
-        <button id="assignSelectedBtn" class="btn btn-primary" type="button" disabled>Assign selected to pin…</button>
-        <button id="deleteSelectedBtn" class="btn btn-icon btn-danger-quiet" type="button" disabled title="Delete selected photos" aria-label="Delete selected photos">
+        <button id="assignSelectedBtn" class="btn btn-primary edit-only" type="button" disabled>Assign selected to pin…</button>
+        <button id="deleteSelectedBtn" class="btn btn-icon btn-danger-quiet edit-only" type="button" disabled title="Delete selected photos" aria-label="Delete selected photos">
           <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 4.5h9m-7 0V3.2a.7.7 0 0 1 .7-.7h3.6a.7.7 0 0 1 .7.7v1.3m-6 0 .6 8a.8.8 0 0 0 .8.7h3.8a.8.8 0 0 0 .8-.7l.6-8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
       </div>
     </aside>
 
     <aside id="pinPanel" class="side-panel hidden" aria-label="Pin gallery">
+      <div id="pinPanelResizeHandle" class="panel-resize-handle" role="separator" aria-orientation="vertical" aria-label="Resize pin gallery"></div>
       <div class="side-panel-header">
         <input id="pinLabelInput" class="pin-label-input" placeholder="Pin label">
-        <button id="pinDeleteBtn" class="btn btn-icon btn-quiet btn-danger-quiet" type="button" title="Delete pin" aria-label="Delete pin">
+        <span id="pinLabelView" class="pin-label-view"></span>
+        <button id="pinDeleteBtn" class="btn btn-icon btn-quiet btn-danger-quiet edit-only" type="button" title="Delete pin" aria-label="Delete pin">
           <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 4.5h9m-7 0V3.2a.7.7 0 0 1 .7-.7h3.6a.7.7 0 0 1 .7.7v1.3m-6 0 .6 8a.8.8 0 0 0 .8.7h3.8a.8.8 0 0 0 .8-.7l.6-8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
         <button id="pinPanelCloseBtn" class="btn btn-icon btn-quiet" type="button" title="Close" aria-label="Close">
           <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8m0-8-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
         </button>
       </div>
+      <div class="pin-controls-grid">
+      <div class="pin-details-column">
       <div class="pin-meta-row">
         <input id="pinCategoryInput" list="categoryOptions" placeholder="category (optional)">
+        <span id="pinCategoryView" class="pin-category-view"></span>
         <datalist id="categoryOptions">
           <option value="interior">
           <option value="exterior">
@@ -167,12 +173,25 @@
         <label class="pin-floor-label">Floor
           <select id="pinFloorSelect"></select>
         </label>
-        <button id="pinMoveBtn" class="btn btn-sm" type="button">
+        <button id="pinMoveBtn" class="btn btn-sm edit-only" type="button">
           <svg class="icon icon-locked" viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="7" width="9" height="6.5" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5.6 7V5.2a2.4 2.4 0 0 1 4.8 0V7" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
           <svg class="icon icon-unlocked" viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="7" width="9" height="6.5" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5.6 7V5.2a2.4 2.4 0 0 1 4.8 0" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
           <span id="pinMoveBtnLabel">Unlock position</span>
         </button>
         <span id="pinMoveHint" class="hint hidden">Drag the pin on the plan, then lock it again.</span>
+      </div>
+      <div class="pin-date-filter">
+        <strong>Date filter</strong>
+        <div class="pin-date-fields">
+          <label>From
+            <input id="pinDateFrom" type="date">
+          </label>
+          <label>To
+            <input id="pinDateTo" type="date">
+          </label>
+        </div>
+        <button id="pinDateClearFilterBtn" class="btn btn-sm hidden" type="button">Clear date filter</button>
+      </div>
       </div>
       <details class="pin-compass-wrap" open>
         <summary>Direction filter</summary>
@@ -183,6 +202,7 @@
         <button id="pinCompassClearFilterBtn" class="btn btn-sm hidden" type="button">Clear filter</button>
         <p class="hint">Drag on the ring to show only photos taken in that direction.</p>
       </details>
+      </div>
       <div class="pin-gallery-toolbar">
         <label class="checkbox-label" title="Only show photos that have no direction set yet">
           <input type="checkbox" id="pinOnlyUndirected"> Show only unassigned
@@ -256,7 +276,9 @@
     </button>
     <div class="photo-modal-body">
       <div class="photo-modal-image">
+        <button id="photoPrevBtn" class="photo-nav photo-nav-prev" type="button" aria-label="Previous photo">&#8249;</button>
         <a id="photoFullLink" target="_blank" rel="noopener" title="Open full resolution"><img id="photoModalImg" alt="Full-size photo"></a>
+        <button id="photoNextBtn" class="photo-nav photo-nav-next" type="button" aria-label="Next photo">&#8250;</button>
       </div>
       <div class="photo-modal-details">
         <p id="photoModalDate" class="photo-date"></p>

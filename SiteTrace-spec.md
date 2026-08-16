@@ -326,6 +326,11 @@ would make adding it later painful.
   assigned photos were taken from, and a draggable pie-wedge angle filter
   that narrows the gallery to photos taken within that direction range. The
   compass block is collapsible so it doesn't eat gallery space when unused.
+- A from/to date filter sits with the pin details, beside the direction
+  filter. Its endpoints are inclusive, it combines with the direction wedge,
+  and each filter has its own clear action. Both filters stay active while
+  switching pins so the same time-and-direction comparison can be carried
+  across locations.
 - A **"Show only unassigned"** checkbox directly above the gallery narrows
   it to photos with no direction set — the working set for a tagging pass,
   paired with "Set direction and next image". It overrides the wedge filter

@@ -1,5 +1,5 @@
 import { api } from "./api.js";
-import { toast, showModal, hideModal } from "./state.js";
+import { state, toast, showModal, hideModal } from "./state.js";
 import { loadUnassigned } from "./unassigned.js";
 
 const importBtn = document.getElementById("importBtn");
@@ -15,6 +15,7 @@ const doneBtn = document.getElementById("importDoneBtn");
 let pollTimer = null;
 
 importBtn.addEventListener("click", () => {
+  if (!state.editMode) return;
   form.reset();
   form.classList.remove("hidden");
   progressWrap.classList.add("hidden");
@@ -26,6 +27,7 @@ cancelBtn.addEventListener("click", () => hideModal("importModal"));
 
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
+  if (!state.editMode) return;
   const sourceDir = pathInput.value.trim();
   if (!sourceDir) return;
   try {

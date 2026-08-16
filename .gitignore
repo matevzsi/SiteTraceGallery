@@ -9,6 +9,7 @@ sitetrace.db-journal
 floorplans/*
 photos/*
 thumbnails/*
+docker-data/
 !floorplans/.gitkeep
 !photos/.gitkeep
 !thumbnails/.gitkeep

@@ -1,5 +1,5 @@
 import { api, photoUrl } from "./api.js";
-import { toast, showModal, hideModal, onModalDismiss, formatDate } from "./state.js";
+import { state, toast, showModal, hideModal, onModalDismiss, formatDate } from "./state.js";
 import { svgEl, headingToXY, xyToHeading, clientPointToSvg } from "./compass.js";
 
 const img = document.getElementById("photoModalImg");
@@ -13,13 +13,18 @@ const setDirectionBtn = document.getElementById("photoDialSetBtn");
 const setDirectionNextBtn = document.getElementById("photoDialSetNextBtn");
 const saveBtn = document.getElementById("photoModalSaveBtn");
 const closeBtn = document.getElementById("photoModalCloseBtn");
+const prevBtn = document.getElementById("photoPrevBtn");
+const nextBtn = document.getElementById("photoNextBtn");
 
 let currentPhoto = null;
 let pendingDeg = 0;
 let confirmed = false;
 let onSavedCallback = null;
+let galleryPhotoIds = [];
 
-export async function openPhotoModal(photoId, { onSaved } = {}) {
+export async function openPhotoModal(photoId, { onSaved, photoIds } = {}) {
+  if (photoIds) galleryPhotoIds = photoIds.slice();
+  else if (!galleryPhotoIds.includes(photoId)) galleryPhotoIds = [photoId];
   const photo = await api.getPhoto(photoId);
   currentPhoto = photo;
   onSavedCallback = onSaved || null;
@@ -40,6 +45,8 @@ export async function openPhotoModal(photoId, { onSaved } = {}) {
   updateDirectionLabel();
   // no pin means no gallery to walk through
   setDirectionNextBtn.disabled = !photo.pin_id;
+  applyMode();
+  updateNavigation();
 
   showModal("photoModal");
 }
@@ -110,6 +117,7 @@ function renderDial() {
 
 let dragging = false;
 dial.addEventListener("mousedown", (e) => {
+  if (!state.editMode) return;
   dragging = true;
   updateFromEvent(e);
 });
@@ -128,7 +136,7 @@ function updateFromEvent(e) {
 }
 
 setDirectionBtn.addEventListener("click", async () => {
-  if (!currentPhoto) return;
+  if (!state.editMode || !currentPhoto) return;
   if (await saveDirection()) toast("Direction saved");
 });
 
@@ -137,7 +145,7 @@ setDirectionBtn.addEventListener("click", async () => {
 // through the gallery. Wraps around the list, since the photo you started
 // from isn't necessarily the first.
 setDirectionNextBtn.addEventListener("click", async () => {
-  if (!currentPhoto) return;
+  if (!state.editMode || !currentPhoto) return;
   const pinId = currentPhoto.pin_id;
   const fromId = currentPhoto.id;
   const carryOnSaved = onSavedCallback;
@@ -179,7 +187,7 @@ async function findNextUndirected(pinId, afterPhotoId) {
 }
 
 saveBtn.addEventListener("click", async () => {
-  if (!currentPhoto) return;
+  if (!state.editMode || !currentPhoto) return;
   try {
     const pinId = pinSelect.value === "" ? null : Number(pinSelect.value);
     await api.updatePhoto(currentPhoto.id, { pin_id: pinId, caption: captionEl.value.trim() || null });
@@ -198,3 +206,36 @@ function closePhotoModal() {
 }
 closeBtn.addEventListener("click", closePhotoModal);
 onModalDismiss("photoModal", closePhotoModal);
+
+function updateNavigation() {
+  const index = currentPhoto ? galleryPhotoIds.indexOf(currentPhoto.id) : -1;
+  const canNavigate = galleryPhotoIds.length > 1 && index !== -1;
+  prevBtn.disabled = !canNavigate || index === 0;
+  nextBtn.disabled = !canNavigate || index === galleryPhotoIds.length - 1;
+}
+
+async function navigate(offset) {
+  if (!currentPhoto) return;
+  const index = galleryPhotoIds.indexOf(currentPhoto.id);
+  const nextId = galleryPhotoIds[index + offset];
+  if (nextId == null) return;
+  await openPhotoModal(nextId, { onSaved: onSavedCallback, photoIds: galleryPhotoIds });
+}
+prevBtn.addEventListener("click", () => navigate(-1));
+nextBtn.addEventListener("click", () => navigate(1));
+document.addEventListener("keydown", (e) => {
+  if (document.getElementById("photoModal").classList.contains("hidden")) return;
+  if (e.key === "ArrowLeft") { e.preventDefault(); navigate(-1); }
+  if (e.key === "ArrowRight") { e.preventDefault(); navigate(1); }
+});
+
+function applyMode() {
+  const editing = state.editMode;
+  pinSelect.disabled = !editing;
+  captionEl.disabled = !editing;
+  dial.classList.toggle("readonly", !editing);
+  setDirectionBtn.classList.toggle("hidden", !editing);
+  setDirectionNextBtn.classList.toggle("hidden", !editing);
+  saveBtn.classList.toggle("hidden", !editing);
+}
+document.addEventListener("mode-changed", applyMode);

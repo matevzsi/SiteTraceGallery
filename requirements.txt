@@ -1,4 +1,5 @@
 Flask>=3.0,<4.0
+gunicorn>=22.0,<24.0
 Pillow>=10.0,<11.0
 # similarity scoring for pin auto-suggestions: comparing a page of photos
 # against every already-assigned one is a matrix multiply over thousands of

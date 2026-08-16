@@ -1,5 +1,5 @@
 import { api } from "./api.js";
-import { toast, showModal, hideModal } from "./state.js";
+import { state, toast, showModal, hideModal } from "./state.js";
 import { refreshFloorplans, getActiveFloorplan } from "./canvas.js";
 
 const modal = document.getElementById("floorplanModal");
@@ -13,6 +13,7 @@ let mode = "add"; // "add" | "site" | "replace"
 let replaceTargetId = null;
 
 function open(kind, targetFp) {
+  if (!state.editMode) return;
   form.reset();
   mode = kind;
   if (kind === "site") {
@@ -43,6 +44,7 @@ document.getElementById("floorplanCancelBtn").addEventListener("click", () => hi
 
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
+  if (!state.editMode) return;
   const fd = new FormData();
   fd.append("name", nameInput.value.trim());
   fd.append("image", imageInput.files[0]);

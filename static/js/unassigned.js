@@ -276,7 +276,7 @@ function buildGroup(group, photos) {
   if (group) {
     const assignBtn = document.createElement("button");
     assignBtn.type = "button";
-    assignBtn.className = "btn btn-sm btn-primary";
+    assignBtn.className = "btn btn-sm btn-primary edit-only";
     assignBtn.textContent = "Assign all";
     assignBtn.addEventListener("click", () => assignGroup(group, section));
     header.appendChild(assignBtn);
@@ -291,6 +291,7 @@ function buildGroup(group, photos) {
 }
 
 async function assignGroup(group, section) {
+  if (!state.editMode) return;
   const ids = group.photo_ids.filter((id) => cardsByPhotoId.has(id));
   if (!ids.length) return;
   try {
@@ -313,7 +314,7 @@ function pruneEmptyGroups() {
 function buildCard(photo) {
   const card = document.createElement("div");
   card.className = "photo-card" + (selected.has(photo.id) ? " selected" : "");
-  card.draggable = true;
+  card.draggable = state.editMode;
   card.dataset.photoId = String(photo.id);
   card.title = formatDate(photo.taken_at);
 
@@ -359,7 +360,7 @@ function buildCard(photo) {
   selectWrap.addEventListener("click", (e) => e.stopPropagation());
   card.appendChild(selectWrap);
 
-  card.addEventListener("click", () => openPhotoModal(photo.id, { onSaved: refreshKeepingScroll }));
+  card.addEventListener("click", () => openPhotoModal(photo.id, { onSaved: refreshKeepingScroll, photoIds: loadedPhotos.map((p) => p.id) }));
   card.addEventListener("dragstart", (e) => onCardDragStart(e, photo));
   card.addEventListener("dragend", onCardDragEnd);
 
@@ -372,6 +373,10 @@ function buildCard(photo) {
 // unselected one drags just that photo (and leaves the selection alone).
 
 function onCardDragStart(e, photo) {
+  if (!state.editMode) {
+    e.preventDefault();
+    return;
+  }
   const ids = selected.has(photo.id) ? Array.from(selected) : [photo.id];
   state.draggingPhotoIds = ids;
   e.dataTransfer.effectAllowed = "move";
@@ -394,6 +399,7 @@ function onCardDragEnd() {
 }
 
 function setSelected(photoId, on) {
+  if (!state.editMode) return;
   if (on) selected.add(photoId);
   else selected.delete(photoId);
   syncCard(photoId);
@@ -430,7 +436,7 @@ clearSelectionBtn.addEventListener("click", () => {
 });
 loadMoreBtn.addEventListener("click", () => loadUnassigned(false));
 assignSelectedBtn.addEventListener("click", () => {
-  if (selected.size === 0) return;
+  if (!state.editMode || selected.size === 0) return;
   enterAssignMode(Array.from(selected));
   awaitingAssignResult = true;
   closeUnassignedPanel();
@@ -438,6 +444,7 @@ assignSelectedBtn.addEventListener("click", () => {
 });
 
 deleteSelectedBtn.addEventListener("click", async () => {
+  if (!state.editMode) return;
   const ids = Array.from(selected);
   if (ids.length === 0) return;
   const n = ids.length;
@@ -459,6 +466,10 @@ deleteSelectedBtn.addEventListener("click", async () => {
     toast(err.message, true);
     await refreshKeepingScroll();
   }
+});
+
+document.addEventListener("mode-changed", () => {
+  for (const card of cardsByPhotoId.values()) card.draggable = state.editMode;
 });
 
 // detail.removedIds means "these left the inbox" — drop just those cards and

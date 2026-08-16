@@ -141,6 +141,7 @@ export async function setFloorplans(list) {
 export async function selectFloorplan(id, opts = {}) {
   state.activeFloorplanId = id != null ? Number(id) : null;
   state.selectedPinId = null;
+  state.selectedPinIds = [];
   closePinPanel();
   const fp = getActiveFloorplan();
   layerEditBtn.disabled = !fp || fp.is_site_plan;
@@ -248,7 +249,7 @@ function renderPins() {
     const el = document.createElement("div");
     el.className =
       "pin-marker" +
-      (pin.id === state.selectedPinId ? " selected" : "") +
+      (state.selectedPinIds.includes(pin.id) ? " selected" : "") +
       (pin.id === movablePinId ? " movable" : "");
     el.style.left = pin.x * 100 + "%";
     el.style.top = pin.y * 100 + "%";
@@ -268,7 +269,7 @@ function renderPins() {
       const latest = pin.indicator_direction_deg;
       // while this pin's gallery has a direction filter on, its fan shows
       // which way that wedge is pointing
-      const filter = pin.id === state.selectedPinId ? overlayFilter : null;
+      const filter = state.selectedPinIds.includes(pin.id) ? overlayFilter : null;
       for (const deg of dirs) {
         const arrow = document.createElement("div");
         arrow.className = "pin-arrow";
@@ -302,7 +303,7 @@ function renderPins() {
         suppressNextPinClick = false;
         return;
       }
-      onPinClick(pin);
+      onPinClick(pin, e.ctrlKey || e.shiftKey || e.metaKey);
     });
     el.addEventListener("mousedown", (e) => onPinMarkerMouseDown(e, pin, el));
     attachPinDropTarget(el, pin);
@@ -327,7 +328,7 @@ export function setPinMovable(pinId) {
 }
 
 function onPinMarkerMouseDown(e, pin, el) {
-  if (e.button !== 0 || pin.id !== movablePinId || state.assignMode || state.layerEditMode) return;
+  if (!state.editMode || e.button !== 0 || pin.id !== movablePinId || state.assignMode || state.layerEditMode) return;
   e.preventDefault();
   e.stopPropagation(); // don't let the container start a pan
   pinDragState = { pin, el, start: screenToContent(e.clientX, e.clientY), origX: pin.x, origY: pin.y, moved: false };
@@ -393,6 +394,7 @@ function clamp01(v) {
  *  panel's floor selector via the hooks in app.js.
  */
 export async function movePinToFloorplan(pinId, targetFpId) {
+  if (!state.editMode) return;
   const pin = state.pins.find((p) => p.id === pinId);
   const fromFp = getActiveFloorplan();
   const toFp = state.floorplans.find((f) => f.id === Number(targetFpId));
@@ -412,8 +414,9 @@ export async function movePinToFloorplan(pinId, targetFpId) {
     const moved = state.pins.find((p) => p.id === pin.id);
     if (moved) {
       state.selectedPinId = moved.id;
+      state.selectedPinIds = [moved.id];
       renderPins();
-      await openPinPanel(moved);
+      await openPinPanel([moved]);
     }
     toast(
       clamped
@@ -435,7 +438,7 @@ function attachPinDropTarget(el, pin) {
   // pointer keeps moving, so a cursor that comes to rest on the marker
   // would never light it up if the highlight hung off dragover alone.
   const markTarget = (e) => {
-    if (!state.draggingPhotoIds?.length) return;
+    if (!state.editMode || !state.draggingPhotoIds?.length) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     el.classList.add("drop-target");
@@ -508,7 +511,7 @@ function handlePlanClick(clientX, clientY) {
     // anything; clicking empty plan space is a no-op.
     return;
   }
-  createPinAt(fp.id, x, y);
+  if (state.editMode) createPinAt(fp.id, x, y);
 }
 
 // --- pan (left-drag) + zoom (wheel) ------------------------------------
@@ -574,6 +577,7 @@ document.getElementById("zoomInBtn").addEventListener("click", () => zoomByStep(
 document.getElementById("zoomOutBtn").addEventListener("click", () => zoomByStep(1 / 1.35));
 
 async function createPinAt(floorplanId, x, y) {
+  if (!state.editMode) return;
   const label = await promptPinLabel();
   if (label === null) return;
   try {
@@ -585,7 +589,7 @@ async function createPinAt(floorplanId, x, y) {
   }
 }
 
-async function onPinClick(pin) {
+async function onPinClick(pin, additive = false) {
   if (state.assignMode) {
     try {
       const ids = state.assignMode.photoIds;
@@ -599,12 +603,26 @@ async function onPinClick(pin) {
     }
     return;
   }
-  state.selectedPinId = pin.id;
+  if (additive) {
+    const selected = new Set(state.selectedPinIds);
+    if (selected.has(pin.id)) selected.delete(pin.id);
+    else selected.add(pin.id);
+    state.selectedPinIds = Array.from(selected);
+  } else {
+    state.selectedPinIds = [pin.id];
+  }
+  if (state.selectedPinIds.length === 0) {
+    closePinPanel();
+    renderPins();
+    return;
+  }
+  state.selectedPinId = state.selectedPinIds[0] ?? null;
   renderPins();
-  await openPinPanel(pin);
+  await openPinPanel(state.pins.filter((candidate) => state.selectedPinIds.includes(candidate.id)));
 }
 
 export function enterAssignMode(photoIds) {
+  if (!state.editMode) return;
   state.assignMode = { photoIds };
   assignModeCount.textContent = String(photoIds.length);
   assignBanner.classList.remove("hidden");
@@ -618,9 +636,9 @@ document.getElementById("assignModeCancelBtn").addEventListener("click", cancelA
 // --- layer edit mode -------------------------------------------------
 
 function setLayerEditMode(on) {
-  state.layerEditMode = on;
-  layerEditControls.classList.toggle("hidden", !on);
-  layerEditBtn.classList.toggle("active", on);
+  state.layerEditMode = state.editMode && on;
+  layerEditControls.classList.toggle("hidden", !state.layerEditMode);
+  layerEditBtn.classList.toggle("active", state.layerEditMode);
   render();
 }
 
@@ -631,6 +649,7 @@ layerOpacity.addEventListener("input", () => {
 });
 
 async function persistTransform() {
+  if (!state.editMode) return;
   const fp = getActiveFloorplan();
   if (!fp) return;
   try {
@@ -743,6 +762,7 @@ document.addEventListener("pin-directions-changed", () => {
 // ever destroyed here, which is what the confirmation promises.
 
 deleteFloorplanBtn.addEventListener("click", async () => {
+  if (!state.editMode) return;
   const fp = getActiveFloorplan();
   if (!fp) return;
 
@@ -775,4 +795,11 @@ deleteFloorplanBtn.addEventListener("click", async () => {
   } catch (err) {
     toast(err.message, true);
   }
+});
+
+document.addEventListener("mode-changed", (e) => {
+  if (e.detail.editMode) return;
+  cancelAssignMode();
+  setLayerEditMode(false);
+  setPinMovable(null);
 });

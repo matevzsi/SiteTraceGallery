@@ -1,0 +1,15 @@
+services:
+  sitetrace:
+    build: .
+    restart: unless-stopped
+    ports:
+      # SiteTrace has no authentication, so expose it only on this machine.
+      - "127.0.0.1:5000:5000"
+    environment:
+      SITETRACE_DATA_DIR: /data
+    volumes:
+      # Database, floorplans and generated thumbnails.
+      - ./docker-data:/data
+      # Photo originals can live in a separate host folder. Set this in
+      # .env, for example: SITETRACE_PHOTOS_DIR=D:/Photos/SiteTrace
+      - "${SITETRACE_PHOTOS_DIR:-./docker-data/photos}:/data/photos"
